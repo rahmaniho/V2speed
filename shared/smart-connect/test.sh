@@ -49,6 +49,22 @@ if "$TMP_DIR/v2speed_csv_rank" "$TMP_DIR/malformed.csv" 1000 60000 30000 > /dev/
   echo 'CSV ranker accepted metrics on a failed attempt.' >&2
   exit 1
 fi
+cat > "$TMP_DIR/stale.csv" <<'CSV'
+server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms
+old-node,100,1,3,40,20
+CSV
+"$TMP_DIR/v2speed_csv_rank" "$TMP_DIR/stale.csv" 1000 100 50 > "$TMP_DIR/stale.out" 2> /dev/null
+grep -q '^No eligible server has fresh measured observations\.' "$TMP_DIR/stale.out"
+printf '%s\n' 'server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms' > "$TMP_DIR/oversized.csv"
+i=0
+while [ "$i" -lt 65 ]; do
+  printf 'bounded,%s,1,1,25,0\n' "$((1000 + i))" >> "$TMP_DIR/oversized.csv"
+  i=$((i + 1))
+done
+if "$TMP_DIR/v2speed_csv_rank" "$TMP_DIR/oversized.csv" 1064 60000 30000 > /dev/null 2>&1; then
+  echo 'CSV ranker accepted more than 64 rows for one server.' >&2
+  exit 1
+fi
 "$TMP_DIR/test_smart_connect"
 "$TMP_DIR/test_connection_state"
 "$TMP_DIR/test_fallback_planner"

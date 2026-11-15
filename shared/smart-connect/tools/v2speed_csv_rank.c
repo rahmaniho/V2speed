@@ -2,6 +2,7 @@
 #include "v2speed/smart_connect_measurements.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -220,9 +221,9 @@ int main(int argc, char **argv) {
     (void)printf("rank,server_id,score,evidence_coverage,measured_mask,throughput_mbps,latency_ms,reliability,stability,recent_success\n");
     for (i = 0; i < ranked_count; i++) {
         const V2SServerMeasurement *measurement = &measurements[ranked[i].input_index];
-        (void)printf("%zu,%s,%.3f,%.3f,%u,", i + 1, measurement->server_id,
-                     ranked[i].score, ranked[i].evidence_coverage,
-                     measurement->measured_mask);
+        (void)printf("%zu,%s,%.3f,%.3f,%" PRIu32 ",", i + 1,
+                     measurement->server_id, ranked[i].score,
+                     ranked[i].evidence_coverage, measurement->measured_mask);
         print_metric(measurement->measured_mask, V2S_METRIC_THROUGHPUT,
                      measurement->throughput_mbps);
         (void)printf(",");
