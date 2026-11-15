@@ -89,6 +89,67 @@ V2SSessionStatus v2s_smart_session_fetch_completed(
         &session->connection, generation, V2S_EVENT_FETCH_COMPLETED));
 }
 
+static int copy_unmeasured_identity(
+    V2SServerMeasurement *measurement,
+    const V2SSessionProbeBatch *batch) {
+    size_t id_length;
+    if (measurement == NULL || batch == NULL || batch->server_id == NULL || batch->eligible > 1) {
+        return 0;
+    }
+    for (id_length = 0; id_length < V2S_SERVER_ID_CAPACITY; id_length++) {
+        if (batch->server_id[id_length] == '\0') break;
+    }
+    if (id_length == 0 || id_length == V2S_SERVER_ID_CAPACITY) return 0;
+    (void)memcpy(measurement->server_id, batch->server_id, id_length + 1);
+    measurement->eligible = batch->eligible;
+    return 1;
+}
+
+V2SSessionStatus v2s_smart_session_benchmark_completed_from_observations(
+    V2SSmartConnectSession *session,
+    uint64_t generation,
+    const V2SSessionProbeBatch *batches,
+    size_t batch_count,
+    uint64_t now_ms,
+    uint64_t max_age_ms,
+    uint64_t recent_window_ms,
+    const uint8_t custom_weights[V2S_SMART_CONNECT_METRIC_COUNT]) {
+    V2SServerMeasurement candidates[V2S_MAX_CANDIDATES] = {0};
+    size_t i;
+    V2SSessionStatus valid = validate_generation(session, generation);
+
+    if (valid != V2S_SESSION_OK) return valid;
+    if (session->connection.state != V2S_CONNECTION_BENCHMARKING) {
+        return V2S_SESSION_INVALID_STATE;
+    }
+    if (batch_count > V2S_MAX_CANDIDATES || (batch_count != 0 && batches == NULL) ||
+        max_age_ms == 0 || recent_window_ms == 0 || recent_window_ms > max_age_ms) {
+        return fail_with_reason(session, V2S_SESSION_INVALID_MEASUREMENTS);
+    }
+
+    for (i = 0; i < batch_count; i++) {
+        const V2SMeasurementStatus status = v2s_measurement_aggregate(
+            batches[i].server_id,
+            batches[i].eligible,
+            batches[i].observations,
+            batches[i].observation_count,
+            now_ms,
+            max_age_ms,
+            recent_window_ms,
+            &candidates[i]);
+        if (status == V2S_MEASUREMENT_NO_FRESH_ATTEMPTS) {
+            if (!copy_unmeasured_identity(&candidates[i], &batches[i])) {
+                return fail_with_reason(session, V2S_SESSION_INVALID_MEASUREMENTS);
+            }
+        } else if (status != V2S_MEASUREMENT_OK) {
+            return fail_with_reason(session, V2S_SESSION_INVALID_MEASUREMENTS);
+        }
+    }
+
+    return v2s_smart_session_benchmark_completed(
+        session, generation, candidates, batch_count, custom_weights);
+}
+
 V2SSessionStatus v2s_smart_session_benchmark_completed(
     V2SSmartConnectSession *session,
     uint64_t generation,

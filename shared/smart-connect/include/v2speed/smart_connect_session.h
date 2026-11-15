@@ -3,6 +3,7 @@
 
 #include "v2speed/connection_state.h"
 #include "v2speed/fallback_planner.h"
+#include "v2speed/smart_connect_measurements.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -31,6 +32,13 @@ typedef struct V2SSmartConnectSession {
     size_t max_attempts;
 } V2SSmartConnectSession;
 
+typedef struct V2SSessionProbeBatch {
+    const char *server_id;
+    uint8_t eligible;
+    const V2SProbeObservation *observations;
+    size_t observation_count;
+} V2SSessionProbeBatch;
+
 V2SSessionStatus v2s_smart_session_init(
     V2SSmartConnectSession *session,
     size_t max_attempts);
@@ -45,6 +53,20 @@ V2SSessionStatus v2s_smart_session_benchmark_completed(
     uint64_t generation,
     const V2SServerMeasurement *candidates,
     size_t candidate_count,
+    const uint8_t custom_weights[V2S_SMART_CONNECT_METRIC_COUNT]);
+
+/* Aggregate one caller-owned observation batch per server, then rank the
+ * resulting measurements and continue the session. A server with no fresh
+ * observations remains unmeasured and is not scored. Malformed/future samples
+ * fail the session without partially applying ranked IDs. No probes are run. */
+V2SSessionStatus v2s_smart_session_benchmark_completed_from_observations(
+    V2SSmartConnectSession *session,
+    uint64_t generation,
+    const V2SSessionProbeBatch *batches,
+    size_t batch_count,
+    uint64_t now_ms,
+    uint64_t max_age_ms,
+    uint64_t recent_window_ms,
     const uint8_t custom_weights[V2S_SMART_CONNECT_METRIC_COUNT]);
 V2SSessionStatus v2s_smart_session_next_candidate(
     V2SSmartConnectSession *session,

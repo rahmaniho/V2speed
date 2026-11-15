@@ -193,6 +193,95 @@ static void test_invalid_policy_and_null_arguments_are_rejected(void) {
     CHECK(v2s_smart_session_benchmark_completed(&session, generation, NULL, 1, NULL) == V2S_SESSION_INVALID_MEASUREMENTS);
 }
 
+static void test_observation_batches_aggregate_and_rank_only_fresh_servers(void) {
+    current_test = "observation_batches_aggregate_before_rank_and_skip_stale_servers";
+    V2SSmartConnectSession session;
+    const V2SProbeObservation fast[] = {
+        {990, 1, V2S_METRIC_THROUGHPUT | V2S_METRIC_LATENCY, 100, 20},
+        {995, 1, V2S_METRIC_THROUGHPUT | V2S_METRIC_LATENCY, 120, 18}
+    };
+    const V2SProbeObservation slow[] = {
+        {990, 1, V2S_METRIC_THROUGHPUT | V2S_METRIC_LATENCY, 30, 80}
+    };
+    const V2SProbeObservation stale[] = {
+        {100, 1, V2S_METRIC_THROUGHPUT | V2S_METRIC_LATENCY, 10000, 1}
+    };
+    const V2SSessionProbeBatch batches[] = {
+        {"fast", 1, fast, 2}, {"slow", 1, slow, 1}, {"stale", 1, stale, 1}
+    };
+    const uint8_t speed_only[V2S_SMART_CONNECT_METRIC_COUNT] = {100, 0, 0, 0, 0};
+    char selected[V2S_SERVER_ID_CAPACITY];
+    uint64_t generation = 0;
+    CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, batches, 3, 1000, 100, 50, speed_only) ==
+          V2S_SESSION_OK);
+    CHECK(session.ranked_count == 2);
+    CHECK(v2s_smart_session_next_candidate(&session, generation, selected) == V2S_SESSION_OK);
+    CHECK(strcmp(selected, "fast") == 0);
+}
+
+static void test_observation_batch_failure_does_not_partially_apply_ranked_ids(void) {
+    current_test = "observation_batch_failure_does_not_partially_apply_ranked_ids";
+    V2SSmartConnectSession session;
+    const V2SProbeObservation valid[] = {
+        {990, 1, V2S_METRIC_THROUGHPUT, 100, 0}
+    };
+    const V2SProbeObservation future[] = {
+        {1001, 1, V2S_METRIC_THROUGHPUT, 1000, 0}
+    };
+    const V2SSessionProbeBatch batches[] = {
+        {"valid", 1, valid, 1}, {"future", 1, future, 1}
+    };
+    uint64_t generation = 0;
+    CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, batches, 2, 1000, 100, 50, NULL) ==
+          V2S_SESSION_INVALID_MEASUREMENTS);
+    CHECK(session.connection.state == V2S_CONNECTION_ERROR);
+    CHECK(session.input_count == 0 && session.ranked_count == 0);
+    CHECK(session.server_ids[0][0] == '\0');
+}
+
+static void test_observation_session_rejects_invalid_phase_and_stale_generation(void) {
+    current_test = "observation_session_rejects_invalid_phase_and_stale_generation";
+    V2SSmartConnectSession session;
+    uint64_t generation = 0;
+    CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_begin(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, NULL, 0, 1000, 100, 50, NULL) ==
+          V2S_SESSION_INVALID_STATE);
+    CHECK(v2s_smart_session_fetch_completed(&session, generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation + 1, NULL, 1, 1000, 100, 50, NULL) ==
+          V2S_SESSION_STALE_GENERATION);
+    CHECK(session.connection.state == V2S_CONNECTION_BENCHMARKING);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, NULL, 0, 1000, 0, 0, NULL) ==
+          V2S_SESSION_INVALID_MEASUREMENTS);
+    CHECK(session.connection.state == V2S_CONNECTION_ERROR);
+}
+
+static void test_all_stale_observation_batches_exhaust_without_fake_metrics(void) {
+    current_test = "all_stale_observation_batches_exhaust_without_fake_metrics";
+    V2SSmartConnectSession session;
+    const V2SProbeObservation stale[] = {
+        {100, 1, V2S_METRIC_THROUGHPUT, 9000, 0}
+    };
+    const V2SSessionProbeBatch batch = {"stale", 1, stale, 1};
+    uint64_t generation = 0;
+    CHECK(v2s_smart_session_init(&session, 1) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, &batch, 1, 1000, 100, 50, NULL) ==
+          V2S_SESSION_NO_CANDIDATES);
+    CHECK(session.connection.state == V2S_CONNECTION_ERROR);
+    CHECK(session.ranked_count == 0);
+}
+
 int main(void) {
     test_rank_fallback_and_verified_connection_flow();
     test_connect_state_is_not_fabricated_before_verified_success();
@@ -204,10 +293,14 @@ int main(void) {
     test_cancel_attempt_transitions_to_disconnected();
     test_duplicate_start_and_invalid_phase_are_rejected();
     test_invalid_policy_and_null_arguments_are_rejected();
+    test_observation_batches_aggregate_and_rank_only_fresh_servers();
+    test_observation_batch_failure_does_not_partially_apply_ranked_ids();
+    test_observation_session_rejects_invalid_phase_and_stale_generation();
+    test_all_stale_observation_batches_exhaust_without_fake_metrics();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect session test(s) failed.\n", failures);
         return 1;
     }
-    puts("10 Smart Connect session tests passed.");
+    puts("14 Smart Connect session tests passed.");
     return 0;
 }
