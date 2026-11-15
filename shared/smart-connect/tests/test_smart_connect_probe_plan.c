@@ -155,6 +155,59 @@ static void test_invalid_transitions_and_clock_order_are_observable(void) {
     CHECK(v2s_probe_plan_complete(&plan, 0, 9, 1) == V2S_PROBE_PLAN_INVALID_ARGUMENT);
 }
 
+static void test_exhausted_dispatch_waits_for_in_flight_work(void) {
+    current_test = "exhausted_dispatch_waits_for_in_flight_work";
+    V2SProbePlan plan;
+    size_t index = 99;
+    CHECK(v2s_probe_plan_init(&plan, 2, 2, 50, 0, 100) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_OK && index == 0);
+    CHECK(v2s_probe_plan_next(&plan, 2, &index) == V2S_PROBE_PLAN_OK && index == 1);
+    CHECK(v2s_probe_plan_next(&plan, 3, &index) == V2S_PROBE_PLAN_BUSY);
+    CHECK(v2s_probe_plan_complete(&plan, 0, 4, 1) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 4, &index) == V2S_PROBE_PLAN_BUSY);
+    CHECK(v2s_probe_plan_complete(&plan, 1, 5, 0) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 5, &index) == V2S_PROBE_PLAN_COMPLETE);
+}
+
+static void test_corrupt_plan_state_is_rejected_transactionally(void) {
+    current_test = "corrupt_plan_state_is_rejected_transactionally";
+    V2SProbePlan plan;
+    size_t index = 77;
+    size_t expired = 88;
+    size_t expired_count = 99;
+    size_t active = 66;
+    size_t active_count = 55;
+    V2SProbeTaskState state = V2S_PROBE_TASK_SUCCEEDED;
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 10, 0, 100) == V2S_PROBE_PLAN_OK);
+    plan.tasks[0].state = (V2SProbeTaskState)99;
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_INVALID_STATE);
+    CHECK(index == 77);
+    CHECK(v2s_probe_plan_complete(&plan, 0, 1, 1) == V2S_PROBE_PLAN_INVALID_STATE);
+    CHECK(v2s_probe_plan_expire(&plan, 1, &expired, 1, &expired_count) == V2S_PROBE_PLAN_INVALID_STATE);
+    CHECK(expired == 88 && expired_count == 99);
+    CHECK(v2s_probe_plan_cancel(&plan, &active, 1, &active_count) == V2S_PROBE_PLAN_INVALID_STATE);
+    CHECK(active == 66 && active_count == 55);
+    CHECK(v2s_probe_plan_task_state(&plan, 0, &state) == V2S_PROBE_PLAN_INVALID_STATE);
+    CHECK(state == V2S_PROBE_TASK_SUCCEEDED);
+}
+
+static void test_null_output_buffers_are_rejected_transactionally(void) {
+    current_test = "null_output_buffers_are_rejected_transactionally";
+    V2SProbePlan plan;
+    size_t index = 99;
+    size_t count = 77;
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 10, 0, 100) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_expire(&plan, 11, NULL, 1, &count) == V2S_PROBE_PLAN_INVALID_ARGUMENT);
+    CHECK(count == 77);
+    CHECK(v2s_probe_plan_cancel(&plan, NULL, 1, &count) == V2S_PROBE_PLAN_INVALID_ARGUMENT);
+    CHECK(count == 77);
+    CHECK(v2s_probe_plan_expire(&plan, 11, NULL, 0, &count) == V2S_PROBE_PLAN_OUTPUT_TOO_SMALL);
+    CHECK(count == 77);
+    CHECK(v2s_probe_plan_cancel(&plan, NULL, 0, &count) == V2S_PROBE_PLAN_OUTPUT_TOO_SMALL);
+    CHECK(count == 77);
+}
+
 static void test_initialization_policy_and_null_arguments(void) {
     current_test = "initialization_policy_and_null_arguments";
     V2SProbePlan plan;
@@ -180,11 +233,14 @@ int main(void) {
     test_cancel_reports_inflight_tasks_and_is_idempotent();
     test_cancel_capacity_failure_is_transactional();
     test_invalid_transitions_and_clock_order_are_observable();
+    test_exhausted_dispatch_waits_for_in_flight_work();
+    test_corrupt_plan_state_is_rejected_transactionally();
+    test_null_output_buffers_are_rejected_transactionally();
     test_initialization_policy_and_null_arguments();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect probe-plan test(s) failed.\n", failures);
         return 1;
     }
-    puts("9 Smart Connect probe-plan tests passed.");
+    puts("12 Smart Connect probe-plan tests passed.");
     return 0;
 }
