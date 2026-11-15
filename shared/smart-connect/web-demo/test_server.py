@@ -70,6 +70,17 @@ class SubscriptionParserTests(unittest.TestCase):
         self.assertNotIn("/api/subscriptions", worker)
         self.assertNotIn("/api/config/", worker)
 
+    def test_manual_refresh_has_a_cooldown(self):
+        previous = SERVER.LAST_FORCED_REFRESH
+        try:
+            SERVER.LAST_FORCED_REFRESH = None
+            self.assertTrue(SERVER.claim_forced_refresh(now=1000.0))
+            self.assertFalse(SERVER.claim_forced_refresh(now=1179.0))
+            self.assertTrue(SERVER.claim_forced_refresh(now=1180.0))
+        finally:
+            SERVER.LAST_FORCED_REFRESH = previous
+
 
 if __name__ == "__main__":
+
     unittest.main()

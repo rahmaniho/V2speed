@@ -45,6 +45,9 @@ SUBSCRIPTION_SOURCES = {
 SUBSCRIPTION_CACHE: dict[str, dict] = {}
 SUBSCRIPTION_CACHE_LOCK = threading.Lock()
 SUBSCRIPTION_CACHE_SECONDS = 300
+FORCED_REFRESH_COOLDOWN_SECONDS = 180
+LAST_FORCED_REFRESH: float | None = None
+FORCED_REFRESH_LOCK = threading.Lock()
 MAX_SUBSCRIPTION_BYTES = 1_000_000
 SUPPORTED_SCHEMES = {"vless", "vmess", "trojan", "ss"}
 
@@ -185,6 +188,17 @@ def fetch_source(source_id: str, force: bool = False) -> dict:
     return result
 
 
+def claim_forced_refresh(now: float | None = None) -> bool:
+    global LAST_FORCED_REFRESH
+    current = time.monotonic() if now is None else now
+    with FORCED_REFRESH_LOCK:
+        if (LAST_FORCED_REFRESH is not None and
+                current - LAST_FORCED_REFRESH < FORCED_REFRESH_COOLDOWN_SECONDS):
+            return False
+        LAST_FORCED_REFRESH = current
+        return True
+
+
 def json_response(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     handler.send_response(status)
@@ -231,6 +245,9 @@ class Handler(BaseHTTPRequestHandler):
             results = []
             errors = []
             force_refresh = parse_qs(urlparse(self.path).query).get("refresh") == ["1"]
+            if force_refresh and not claim_forced_refresh():
+                json_response(self, 429, {"error": "برای کاهش فشار روی GitHub، تازه‌سازی دستی را چند دقیقه بعد دوباره امتحان کنید."})
+                return
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
                 futures = {pool.submit(fetch_source, source_id, force_refresh): source_id
                            for source_id in SUBSCRIPTION_SOURCES}
