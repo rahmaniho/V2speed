@@ -33,6 +33,27 @@ The two images supplied by the user are preserved as the original Lion and Sun a
 - The session coordinator can aggregate caller-owned per-server observation batches before ranking. The bridge maps scheduler `FAILED`/`TIMED_OUT` states to failed observations with no metric mask; a `SUCCEEDED` state still requires caller-supplied measurement data. The aggregator and scheduler read no clock and perform no network I/O or task cancellation. Tunnel success still depends on a caller-reported verified outcome; real probes, tunnel establishment/verification and engine-driven fallback remain unimplemented. No ICMP-only ranking or invented metrics.
 - Local configuration management must not require a backend. No database/cache is selected.
 
+## Experimental CSV ranking tool
+
+A small command-line experiment is available for testing the current Smart Connect C ranking and aggregation logic against measurements exported from your own probe runner. It **does not run probes, contact servers, or verify a VPN tunnel**; it only processes caller-supplied data. The repository's demo fixture is synthetic, not real measurement data.
+
+Build it with GCC or Clang:
+
+```sh
+make -C shared/smart-connect demo
+/tmp/v2speed-csv-rank observations.csv 60000 10000
+```
+
+The CSV header must be exactly:
+
+```text
+server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms
+```
+
+`measured_mask` is a bit mask: `1` = throughput (Mbps), `2` = latency (ms), and `3` = both. Failed attempts use `success=0` and `measured_mask=0`; successful attempts set `success=1`. Use a consistent monotonic millisecond timebase for all rows. The tool takes the newest timestamp in the file as `now`; the two command-line numbers are maximum sample age and recent-success window in milliseconds, with the recent window no greater than the maximum age. Unmeasured values should be `0` and are ignored according to the mask. IDs must be unique per server, at most 63 bytes, and cannot contain commas or quotes. Limits are 256 servers and 64 rows per server.
+
+All imported servers are treated as eligible candidates; exclude unauthorized, expired or incompatible endpoints before importing. The result is an experimental ranking from caller-reported observations, not an independent confirmation of their authenticity or of real-world VPN performance. Run the seven-test CMake suite or `make -C shared/smart-connect test` to exercise the domain tests and CLI demo smoke test.
+
 ## Tooling / verification limitations
 
 At this checkout, GCC, Python 3 and Node.js are available; GCC was used for the portable domain core. Java/JDK, Gradle executable, Kotlin compiler, Android SDK/ADB, Go, Xcode/Swift and Apple Network Extension entitlements are not available. Therefore native client build/runtime verification cannot be performed here. The exact missing test evidence is recorded rather than presented as complete.

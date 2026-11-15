@@ -22,6 +22,9 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(v2speed_smart_connect PRIVATE -Wall -Wextra -Werror -pedantic)
 endif()
 
+add_executable(v2speed_csv_rank tools/v2speed_csv_rank.c)
+target_link_libraries(v2speed_csv_rank PRIVATE v2speed_smart_connect)
+
 if(BUILD_TESTING)
     add_executable(test_smart_connect tests/test_smart_connect.c)
     target_link_libraries(test_smart_connect PRIVATE v2speed_smart_connect)
@@ -46,4 +49,9 @@ if(BUILD_TESTING)
     add_executable(test_smart_connect_probe_plan tests/test_smart_connect_probe_plan.c)
     target_link_libraries(test_smart_connect_probe_plan PRIVATE v2speed_smart_connect)
     add_test(NAME smart_connect_probe_plan_domain COMMAND test_smart_connect_probe_plan)
+
+    add_test(NAME smart_connect_csv_rank_demo
+        COMMAND v2speed_csv_rank
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/demo_observations.csv
+            60000 30000)
 endif()

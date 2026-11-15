@@ -11,8 +11,12 @@
 - Probe scheduling plan C ABI: `shared/smart-connect/include/v2speed/smart_connect_probe_plan.h`
 - Implementations: `shared/smart-connect/src/`
 - Deterministic tests: `shared/smart-connect/tests/`
-- Run: `make -C shared/smart-connect test`
+- Run domain and CLI smoke tests: `make -C shared/smart-connect test`
+- Build the experimental CSV ranker: `make -C shared/smart-connect demo` (writes `/tmp/v2speed-csv-rank` by default)
+- CLI source: `shared/smart-connect/tools/v2speed_csv_rank.c`; synthetic-only smoke fixture: `shared/smart-connect/tests/fixtures/demo_observations.csv`
 - CI: `.github/workflows/smart-connect.yml`
+
+The CSV ranker accepts caller-exported observations in the documented README schema and invokes the same C aggregation and ranking functions. It derives `now_ms` from the newest imported row. It does not collect measurements, contact the listed servers, check endpoint authorization, or verify tunnel state. The checked-in fixture is synthetic and is used only for a CLI smoke test.
 
 The code performs no network access, storage, threading, clock reads, memory allocation, logging, packet processing, or secret handling. Scoring callers must provide validated, freshly measured values from appropriate probes. The function cannot establish that a value came from a real network measurement.
 
@@ -107,7 +111,7 @@ An intermediate score-test run caught a flawed test fixture: unopposed single re
 - GCC/gcov measurement-aggregator coverage: **99.25% of 133 lines**, **100.00% of branches executed**, and **93.18% of branch outcomes taken at least once**.
 - GCC/gcov probe-plan coverage: **97.66% of 128 lines**, **100% of branches executed**, and **83.72% of branch outcomes taken at least once**.
 - GCC/gcov session-coordinator coverage: **88.19% of lines (144 total)**, **98.60% of branches executed**, and **69.23% of branch outcomes taken at least once**. Coverage output was temporary.
-- CMake 4.4.5 configure/build and CTest — **passed** all 6 suites (scorer, connection state, fallback planner, session coordinator, observation aggregation, probe plan). CMake was installed into `/tmp` for local verification; GitHub Actions runs both the Make suite and CMake build/CTest, plus ASan/UBSan-instrumented tests and GCC `-fanalyzer` on all production sources. `CFLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer -g' make -C shared/smart-connect test` is the local sanitizer command. No build artifacts were added to the repository.
+- CMake 4.4.5 configure/build and CTest — **passed** all 7 tests (the six domain suites plus the CSV-ranker demo smoke test). CMake was installed into `/tmp` for local verification; GitHub Actions runs the portable tests, plus ASan/UBSan-instrumented tests and GCC `-fanalyzer` on the production library sources. The CSV CLI also passed ASan/UBSan smoke execution and GCC `-fanalyzer`. `CFLAGS='-fsanitize=address,undefined -fno-omit-frame-pointer -g' make -C shared/smart-connect test` is the local sanitizer command. The CLI smoke uses synthetic fixture data only. No build artifacts were added to the repository.
 - GCC/gcov scoring source: **100.00% source lines executed (102/102)**, **100.00% branches executed (101/101)**, **96.04% branch outcomes taken at least once**.
 - GCC/gcov connection-state source: **100.00% source lines executed (67/67)**, **100.00% branches executed (56/56)** and **100.00% branch outcomes taken at least once**. Fallback planner: **100.00% lines (53/53)**, **100.00% branches (58/58)** and **91.38% branch outcomes taken at least once**.
 - Coverage binaries/data were stored under temporary directories only.

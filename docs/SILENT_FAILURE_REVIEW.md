@@ -20,8 +20,8 @@
 
 ## Verification evidence
 
-- `make -C shared/smart-connect test`: passed all 6 suites (17 scorer, 14 reducer, 11 fallback, 18 session, 15 observation-aggregation, 14 probe-plan tests).
-- CMake 4.4.5 configure/build plus CTest: passed all 6 suites.
+- `make -C shared/smart-connect test`: passed all 6 domain suites (17 scorer, 14 reducer, 11 fallback, 18 session, 15 observation-aggregation, 14 probe-plan tests) and the CSV ranker smoke check.
+- CMake 4.4.5 configure/build plus CTest: passed all 7 tests, including the CSV ranker demo smoke test. The fixture is synthetic; no live probes were run.
 - All six test executables passed AddressSanitizer and UndefinedBehaviorSanitizer with leak detection enabled; GCC `-fanalyzer` passed for the six production sources.
 - This evidence covers deterministic domain logic only. It does not establish real measurements, tunnel readiness, platform lifecycle synchronization, or safe error rendering.
 
