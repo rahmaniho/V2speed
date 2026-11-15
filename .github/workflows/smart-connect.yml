@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Test browser prototype subscription parsing
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s shared/smart-connect/web-demo -p 'test_*.py' -v
       - name: Compile and run deterministic Smart Connect tests
         run: make -C shared/smart-connect test
       - name: Run tests with AddressSanitizer and UndefinedBehaviorSanitizer

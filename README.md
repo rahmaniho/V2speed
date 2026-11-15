@@ -20,6 +20,7 @@ Milestone 1 outputs and current implementation:
 - [Platform compatibility](docs/PLATFORM_COMPATIBILITY.md) and [engine selection](docs/ENGINE_SELECTION.md)
 - [Test strategy](docs/TEST_STRATEGY.md), [silent-failure review](docs/SILENT_FAILURE_REVIEW.md), and [risk register](docs/RISK_REGISTER.md)
 - [Supplied V2Speed brand asset pack](docs/brand-assets/README.md)
+- [First browser prototype and subscription-source review](docs/WEB_APP_TRIAL.md)
 
 ## Brand assets
 
@@ -53,9 +54,11 @@ server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms
 
 `measured_mask` is a bit mask: `1` = throughput (Mbps), `2` = latency (ms), and `3` = both. Failed attempts use `success=0` and `measured_mask=0`; successful attempts set `success=1`. Use a consistent monotonic millisecond timebase for all rows. Supply `NOW_MS` from that same timebase so stale and future samples can be rejected correctly; do not use wall-clock timestamps. The remaining command-line numbers are maximum sample age and recent-success window in milliseconds, with the recent window no greater than the maximum age. If measurements and the command run on the same host using Python's monotonic clock, the example command obtains a compatible current timestamp. Unmeasured values should be `0` and are ignored according to the mask. IDs must be unique per server, at most 63 bytes, and cannot contain commas or quotes. Limits are 256 servers and 64 rows per server.
 
-All imported servers are treated as eligible candidates; exclude unauthorized, expired or incompatible endpoints before importing. The result is an experimental ranking from caller-reported observations, not an independent confirmation of their authenticity or of real-world VPN performance. Run the seven-test CMake suite or `make -C shared/smart-connect test` to exercise the domain tests and CLI demo smoke test.
+All imported servers are treated as eligible candidates; exclude unauthorized, expired or incompatible endpoints before importing. The result is an experimental ranking from caller-reported observations, not an independent confirmation of their authenticity or of real-world VPN performance. Run `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s shared/smart-connect/web-demo -p 'test_*.py'` for parser tests, `make -C shared/smart-connect test` for the domain suites and CLI smoke cases, or CMake/CTest for the seven C tests.
 
-For a no-terminal browser trial, `shared/smart-connect/web-demo/` contains a small standard-library Python upload UI that builds and invokes the same C ranker. Run it in a trusted local environment with `python3 shared/smart-connect/web-demo/server.py`, then open the shown local address. It accepts CSV uploads up to 1 MB, keeps each upload in a temporary file only while ranking, and never performs network probes.
+For a no-terminal first browser prototype, `shared/smart-connect/web-demo/` contains a standard-library Python app that fetches the three requested subscription files through fixed GitHub API paths, decodes VLESS/VMess/Trojan/Shadowsocks entries, and lets the user filter and copy a chosen URI. It uses the supplied V2Speed wordmark. Public source files are fetched live and cached for five minutes; config contents are kept server-side until a user requests copy, and never saved to the repository. No connection or probe is run. The `/csv` page remains the separate caller-measurement ranking tool.
+
+Run the browser prototype in a trusted local environment with `python3 shared/smart-connect/web-demo/server.py`, then open the shown address. The server needs outbound access to `api.github.com`; it binds to `0.0.0.0` for the hosted Arena preview. Subscription data has no clear redistribution license: the first source README says configs are free to use but also asserts all rights reserved; no license file was found in the inspected snapshots of the other two. We fetch rather than bundle the lists, attribute their sources, and require legal review before redistributing them in a production/proprietary app.
 
 ## Tooling / verification limitations
 

@@ -1,0 +1,61 @@
+import base64
+import importlib.util
+import json
+from pathlib import Path
+import unittest
+
+SERVER_PATH = Path(__file__).with_name("server.py")
+SPEC = importlib.util.spec_from_file_location("v2speed_web_demo_server", SERVER_PATH)
+SERVER = importlib.util.module_from_spec(SPEC)
+assert SPEC.loader is not None
+SPEC.loader.exec_module(SERVER)
+
+
+class SubscriptionParserTests(unittest.TestCase):
+    def test_plain_mixed_subscription_is_kept_as_text(self):
+        text = "vless://id@example.com:443?security=tls#edge\nss://user@example.net:8388#fast"
+        self.assertEqual(SERVER.decode_subscription_payload(text), text)
+
+    def test_base64_subscription_list_is_decoded(self):
+        plain = "ss://user@example.com:443#node-a\nss://user@example.net:8443#node-b"
+        encoded = base64.b64encode(plain.encode()).decode()
+        self.assertEqual(SERVER.decode_subscription_payload(encoded), plain)
+
+    def test_vless_and_trojan_rows_expose_endpoint_without_reformatting_config(self):
+        for scheme in ("vless", "trojan"):
+            uri = f"{scheme}://credential@example.org:8443?security=tls#Frankfurt"
+            node = SERVER.parse_subscription_row(uri)
+            self.assertIsNotNone(node)
+            self.assertEqual(node["endpoint"], "example.org:8443")
+            self.assertEqual(node["name"], "Frankfurt")
+            self.assertEqual(node["uri"], uri)
+
+    def test_vmess_json_row_is_decoded(self):
+        payload = {"add": "vmess.example.org", "port": "443", "ps": "VMess test"}
+        encoded = base64.b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        node = SERVER.parse_subscription_row(f"vmess://{encoded}")
+        self.assertIsNotNone(node)
+        self.assertEqual(node["protocol"], "vmess")
+        self.assertEqual(node["endpoint"], "vmess.example.org:443")
+        self.assertEqual(node["name"], "VMess test")
+
+    def test_legacy_whole_authority_shadowsocks_is_parsed(self):
+        credentials = base64.b64encode(b"aes-128-gcm:secret@192.0.2.1:8388").decode().rstrip("=")
+        node = SERVER.parse_subscription_row(f"ss://{credentials}#Example")
+        self.assertIsNotNone(node)
+        self.assertEqual(node["protocol"], "shadowsocks")
+        self.assertEqual(node["endpoint"], "192.0.2.1:8388")
+
+    def test_unknown_protocol_and_invalid_vmess_are_skipped(self):
+        self.assertIsNone(SERVER.parse_subscription_row("http://example.com/"))
+        self.assertIsNone(SERVER.parse_subscription_row("vmess://not-valid-base64"))
+
+    def test_only_requested_fixed_github_api_sources_are_configured(self):
+        self.assertEqual(set(SERVER.SUBSCRIPTION_SOURCES), {"iboxz", "thomas", "v2collector"})
+        for source in SERVER.SUBSCRIPTION_SOURCES.values():
+            self.assertTrue(source["api_url"].startswith("https://api.github.com/repos/"))
+            self.assertTrue(source["url"].startswith("https://raw.githubusercontent.com/"))
+
+
+if __name__ == "__main__":
+    unittest.main()
