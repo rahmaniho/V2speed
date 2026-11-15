@@ -141,6 +141,34 @@ def parse_subscription_row(uri: str) -> dict | None:
             "protocol": protocol, "uri": stripped}
 
 
+def parse_subscription_text(text: str) -> tuple[list[dict], dict[str, int]]:
+    items = []
+    seen = set()
+    row_count = 0
+    duplicate_count = 0
+    skipped_count = 0
+    for line in text.splitlines():
+        row = line.strip()
+        if not row or row.startswith("#"):
+            continue
+        row_count += 1
+        parsed = parse_subscription_row(row)
+        if parsed is None:
+            skipped_count += 1
+            continue
+        if parsed["id"] in seen:
+            duplicate_count += 1
+            continue
+        seen.add(parsed["id"])
+        items.append(parsed)
+    return items, {
+        "rows": row_count,
+        "accepted": len(items),
+        "duplicates": duplicate_count,
+        "skipped": skipped_count,
+    }
+
+
 def fetch_source(source_id: str, force: bool = False) -> dict:
     now = time.monotonic()
     with SUBSCRIPTION_CACHE_LOCK:
@@ -161,17 +189,7 @@ def fetch_source(source_id: str, force: bool = False) -> dict:
     if len(raw) > MAX_SUBSCRIPTION_BYTES:
         raise ValueError("subscription file exceeds size limit")
     text = decode_subscription_payload(raw.decode("utf-8-sig", errors="replace"))
-    items = []
-    seen = set()
-    for line in text.splitlines():
-        row = line.strip()
-        if not row or row.startswith("#"):
-            continue
-        parsed = parse_subscription_row(row)
-        if parsed is None or parsed["id"] in seen:
-            continue
-        seen.add(parsed["id"])
-        items.append(parsed)
+    items, parse_stats = parse_subscription_text(text)
     protocols: dict[str, int] = {}
     for item in items:
         protocols[item["protocol"]] = protocols.get(item["protocol"], 0) + 1
@@ -181,11 +199,25 @@ def fetch_source(source_id: str, force: bool = False) -> dict:
         "url": source["url"],
         "items": items,
         "protocols": protocols,
+        "parse_stats": parse_stats,
         "cached_at": now,
     }
     with SUBSCRIPTION_CACHE_LOCK:
         SUBSCRIPTION_CACHE[source_id] = result
     return result
+
+
+def public_source_summary(source: dict) -> dict:
+    return {
+        "source_id": source["source_id"],
+        "name": source["name"],
+        "url": source["url"],
+        "count": len(source["items"]),
+        **source["parse_stats"],
+        "protocols": source["protocols"],
+        "nodes": [{key: node[key] for key in ("id", "name", "endpoint", "protocol")}
+                  for node in source["items"]],
+    }
 
 
 def claim_forced_refresh(now: float | None = None) -> bool:
@@ -255,15 +287,7 @@ class Handler(BaseHTTPRequestHandler):
                     source_id = futures[future]
                     try:
                         source = future.result()
-                        results.append({
-                            "source_id": source["source_id"],
-                            "name": source["name"],
-                            "url": source["url"],
-                            "count": len(source["items"]),
-                            "protocols": source["protocols"],
-                            "nodes": [{key: node[key] for key in ("id", "name", "endpoint", "protocol")}
-                                      for node in source["items"]],
-                        })
+                        results.append(public_source_summary(source))
                     except (OSError, ValueError, urllib.error.URLError,
                             urllib.error.HTTPError, json.JSONDecodeError):
                         errors.append({"source_id": source_id,

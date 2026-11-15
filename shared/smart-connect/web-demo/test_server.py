@@ -21,6 +21,29 @@ class SubscriptionParserTests(unittest.TestCase):
         encoded = base64.b64encode(plain.encode()).decode()
         self.assertEqual(SERVER.decode_subscription_payload(encoded), plain)
 
+    def test_subscription_parser_reports_accepted_duplicate_and_skipped_rows(self):
+        good = "vless://id@example.com:443?security=tls#edge"
+        text = f"# feed comment\n{good}\n{good}\nnot-a-config\n"
+        items, stats = SERVER.parse_subscription_text(text)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(stats, {"rows": 3, "accepted": 1, "duplicates": 1, "skipped": 1})
+
+    def test_public_source_summary_never_includes_config_uri(self):
+        source = {
+            "source_id": "unit",
+            "name": "test source",
+            "url": "https://example.invalid/sub",
+            "items": [{"id": "0123456789abcdef", "name": "node",
+                       "endpoint": "example.invalid:443", "protocol": "vless",
+                       "uri": "vless://secret@example.invalid:443"}],
+            "protocols": {"vless": 1},
+            "parse_stats": {"rows": 1, "accepted": 1, "duplicates": 0, "skipped": 0},
+        }
+        summary = SERVER.public_source_summary(source)
+        self.assertNotIn("uri", summary["nodes"][0])
+        self.assertEqual(summary["accepted"], 1)
+        self.assertEqual(summary["count"], 1)
+
     def test_vless_and_trojan_rows_expose_endpoint_without_reformatting_config(self):
         for scheme in ("vless", "trojan"):
             uri = f"{scheme}://credential@example.org:8443?security=tls#Frankfurt"
