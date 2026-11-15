@@ -1,0 +1,32 @@
+name: Brand asset validation
+
+on:
+  push:
+    branches: [main, "arena/**"]
+    paths:
+      - "docs/brand-assets/**"
+      - "scripts/verify_brand_assets.py"
+      - ".github/workflows/brand-assets.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/brand-assets/**"
+      - "scripts/verify_brand_assets.py"
+      - ".github/workflows/brand-assets.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-brand-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Verify supplied sources and generated PNG dimensions
+        run: python scripts/verify_brand_assets.py
+      - name: Check verifier syntax
+        run: python -m py_compile scripts/verify_brand_assets.py

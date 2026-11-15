@@ -1,0 +1,47 @@
+name: Smart Connect domain tests
+
+on:
+  push:
+    branches: [main, "arena/**"]
+    paths:
+      - "shared/smart-connect/**"
+      - ".github/workflows/smart-connect.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "shared/smart-connect/**"
+      - ".github/workflows/smart-connect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smart-connect-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Test browser prototype subscription parsing
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s shared/smart-connect/web-demo -p 'test_*.py' -v
+      - name: Compile and run deterministic Smart Connect tests
+        run: make -C shared/smart-connect test
+      - name: Run tests with AddressSanitizer and UndefinedBehaviorSanitizer
+        env:
+          CFLAGS: -fsanitize=address,undefined -fno-omit-frame-pointer -g
+        run: make -C shared/smart-connect test
+      - name: Run GCC static analyzer on production sources
+        run: |
+          set -eu
+          analyzer_dir="${RUNNER_TEMP}/v2speed-smart-connect-analyzer"
+          mkdir -p "$analyzer_dir"
+          for source in shared/smart-connect/src/*.c; do
+            object="$analyzer_dir/$(basename "${source%.c}").o"
+            gcc -std=c11 -Wall -Wextra -Werror -pedantic -fanalyzer \
+              -I shared/smart-connect/include -c "$source" -o "$object"
+          done
+      - name: Configure CMake library and test executables
+        run: cmake -S shared/smart-connect -B "${{ runner.temp }}/v2speed-smart-connect-build" -DCMAKE_BUILD_TYPE=Debug
+      - name: Build the CMake targets
+        run: cmake --build "${{ runner.temp }}/v2speed-smart-connect-build" --parallel
+      - name: Run CTest suite
+        run: ctest --test-dir "${{ runner.temp }}/v2speed-smart-connect-build" --output-on-failure
