@@ -17,7 +17,7 @@
 5. Created the feature matrix, PRD, license report, skill audit, ADR, architecture outline, platform compatibility matrix, engine assessment, test strategy and risk register.
 6. Preserved both actual supplied V2Speed images byte-for-byte, created proportional brand derivatives without cropping or erasing artwork, and added a standard-library asset verifier.
 7. Started the foundation/CI work with a GitHub Actions workflow that runs the brand-asset validation and verifier syntax check on relevant changes.
-8. Began the shared mobile-domain foundation with a portable C scoring library and generation-safe connection-state reducer, strict input/state validation, stable ranking/tie handling, 17 scorer tests (including 1,000 generated batches), 14 reducer tests (including 10,000 generated events), 11 fallback-planner tests (including 250 generated plans), a 10-test session coordinator suite, and an 10-test bounded probe-observation aggregation suite, a `make` runner, and a dedicated GitHub Actions workflow. The coordinator snapshots ranked IDs and serializes domain attempt decisions, but these components perform no networking and do not prove a tunnel exists.
+8. Began the shared mobile-domain foundation with a portable C scoring library, generation-safe connection-state reducer, bounded fallback and probe-scheduling plans, session coordinator, and timestamped observation aggregator. Test coverage includes 17 scorer tests (including 1,000 generated batches), 14 reducer tests (including 10,000 generated events), 11 fallback-planner tests (including 250 generated plans), 10 session-coordinator tests, 10 observation-aggregation tests, and 9 probe-plan tests. These portable components perform no networking, do not cancel real tasks, and do not prove a tunnel exists.
 
 ## Audit conclusions
 
@@ -31,12 +31,13 @@
 
 - `python3 scripts/verify_brand_assets.py` — **passed**; 8 source/derivative PNGs validated for signature, dimensions, color type and original source byte sizes.
 - `python3 -m py_compile scripts/verify_brand_assets.py` — **passed**.
-- `make -C shared/smart-connect test` — **passed**: 17 scorer, 14 connection-state, 11 fallback-planner, 10 session-coordinator and 10 measurement-aggregation tests.
-- All five C test executables compiled with `-Wall -Wextra -Werror -pedantic -fsanitize=address,undefined`; all tests **passed** with leak detection enabled.
-- All five production C sources compiled with GCC `-fanalyzer -Wall -Wextra -Werror -pedantic` — **passed**.
+- `make -C shared/smart-connect test` — **passed**: 17 scorer, 14 connection-state, 11 fallback-planner, 10 session-coordinator, 10 measurement-aggregation, and 9 probe-plan tests.
+- All six C test executables compiled with `-Wall -Wextra -Werror -pedantic -fsanitize=address,undefined`; all tests **passed** with leak detection enabled.
+- All six production C sources compiled with GCC `-fanalyzer -Wall -Wextra -Werror -pedantic` — **passed**.
 - GCC/gcov scoring coverage — **100% source lines and branches executed**, **96.04% branch outcomes taken at least once**. Connection reducer — **100% source lines and branches executed (67/67 lines, 56/56 branches)**, **100% branch outcomes taken at least once**. Fallback planner — **100% source lines and branches (53/53 lines, 58/58 branches)**, **91.38% branch outcomes taken at least once**. Coverage files were temporary.
-- Both `.github/workflows/*.yml` workflows — parsed locally. GitHub Actions passed both jobs (`smart-connect-tests`, `verify-brand-assets`) on PR head `58e9ddc`, including the stability policy and scorer handoff.
-- CMake 4.4.5 configure/build and CTest — **passed** all five domain suites; the tool was installed temporarily under `/tmp`.
+- Both `.github/workflows/*.yml` workflows — parsed locally. GitHub Actions passed both jobs (`smart-connect-tests`, `verify-brand-assets`) on PR head `58e9ddc`, including the stability policy and scorer handoff; the probe-scheduling planner change still requires a new run.
+- CMake 4.4.5 configure/build and CTest — **passed** all six domain suites; the tool was installed temporarily under `/tmp`.
+- GCC/gcov probe-plan coverage — **95.31% of 128 lines**, **98.84% of branches executed**, and **73.84% branch outcomes taken at least once**.
 - GCC/gcov measurement aggregator coverage — **99.06% of 106 lines**, **100.00% of branches executed**, and **91.51% branch outcomes taken at least once**.
 - GCC/gcov session coordinator coverage — **86.84% of 114 lines**, **98.06% of branches executed**, and **66.99% branch outcomes taken at least once**. Prior scorer/reducer/planner coverage figures are recorded separately.
 - `git diff --check` — **passed**.
