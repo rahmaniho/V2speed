@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 SERVER_PATH = Path(__file__).with_name("server.py")
 SPEC = importlib.util.spec_from_file_location("v2speed_web_demo_server", SERVER_PATH)
@@ -38,11 +39,15 @@ class SubscriptionParserTests(unittest.TestCase):
                        "uri": "vless://secret@example.invalid:443"}],
             "protocols": {"vless": 1},
             "parse_stats": {"rows": 1, "accepted": 1, "duplicates": 0, "skipped": 0},
+            "cached_at": 100.0,
+            "fetched_at_utc": "2026-11-15T12:00:00+00:00",
         }
-        summary = SERVER.public_source_summary(source)
+        summary = SERVER.public_source_summary(source, stale=True, now=460.0)
         self.assertNotIn("uri", summary["nodes"][0])
         self.assertEqual(summary["accepted"], 1)
         self.assertEqual(summary["count"], 1)
+        self.assertTrue(summary["stale"])
+        self.assertEqual(summary["cache_age_seconds"], 360)
 
     def test_vless_and_trojan_rows_expose_endpoint_without_reformatting_config(self):
         for scheme in ("vless", "trojan"):
@@ -92,6 +97,18 @@ class SubscriptionParserTests(unittest.TestCase):
         self.assertIn("url.pathname.startsWith('/api/')", worker)
         self.assertNotIn("/api/subscriptions", worker)
         self.assertNotIn("/api/config/", worker)
+
+    def test_fetch_uses_stale_cache_when_upstream_fails(self):
+        cached = {"source_id": "iboxz", "items": []}
+        with mock.patch.object(SERVER, "fetch_source", side_effect=OSError("offline")), \
+                mock.patch.object(SERVER, "get_cached_source", return_value=cached):
+            result, stale = SERVER.fetch_source_with_stale_fallback("iboxz")
+        self.assertIs(result, cached)
+        self.assertTrue(stale)
+        with mock.patch.object(SERVER, "fetch_source", side_effect=OSError("offline")), \
+                mock.patch.object(SERVER, "get_cached_source", return_value=None):
+            with self.assertRaises(OSError):
+                SERVER.fetch_source_with_stale_fallback("iboxz")
 
     def test_manual_refresh_has_a_cooldown(self):
         previous = SERVER.LAST_FORCED_REFRESH
