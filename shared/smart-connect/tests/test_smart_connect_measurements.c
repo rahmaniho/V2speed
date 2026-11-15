@@ -330,6 +330,61 @@ static void test_scheduler_observation_conversion_errors_are_transactional(void)
     CHECK(memcmp(&output, &before, sizeof(output)) == 0);
 }
 
+static void test_generated_scheduler_observation_handoffs_preserve_evidence(void) {
+    current_test = "generated_scheduler_observation_handoffs_preserve_evidence";
+    size_t iteration;
+    for (iteration = 0; iteration < 500; iteration++) {
+        V2SProbePlan plan;
+        V2SProbeObservation supplied;
+        V2SProbeObservation observation;
+        V2SServerMeasurement measurement;
+        const uint8_t outcome = (uint8_t)(next_random() & 1u);
+        const uint32_t metrics = outcome ? next_random() & V2S_PROBE_METRIC_MASK : 0;
+        const double throughput = (double)(next_random() % 10000u) / 10.0;
+        const double latency = (double)(next_random() % 5000u) / 10.0;
+        size_t candidate = 99;
+        uint64_t observation_time;
+        uint64_t now_ms;
+        V2SProbePlanStatus plan_status;
+        CHECK(v2s_probe_plan_init(&plan, 1, 1, 2, 100, 1000) == V2S_PROBE_PLAN_OK);
+        CHECK(v2s_probe_plan_next(&plan, 100, &candidate) == V2S_PROBE_PLAN_OK);
+        if (outcome) {
+            CHECK(v2s_probe_plan_complete(&plan, candidate, 101, 1) == V2S_PROBE_PLAN_OK);
+            observation_time = 102;
+            supplied = sample(0, 1, metrics, throughput, latency);
+        } else if ((next_random() & 1u) != 0) {
+            CHECK(v2s_probe_plan_complete(&plan, candidate, 101, 0) == V2S_PROBE_PLAN_OK);
+            observation_time = 102;
+        } else {
+            size_t expired_index = 99;
+            size_t expired_count = 99;
+            plan_status = v2s_probe_plan_expire(&plan, 102, &expired_index, 1,
+                                                &expired_count);
+            CHECK(plan_status == V2S_PROBE_PLAN_OK);
+            CHECK(expired_count == 1 && expired_index == candidate);
+            observation_time = 103;
+        }
+        CHECK(v2s_measurement_observation_from_plan(
+                  &plan, candidate, observation_time, outcome ? &supplied : NULL,
+                  &observation) == V2S_MEASUREMENT_OK);
+        CHECK(observation.succeeded == outcome);
+        CHECK(observation.measured_mask == (outcome ? metrics : 0));
+        now_ms = observation_time + 10;
+        CHECK(v2s_measurement_aggregate("generated-handoff", 1, &observation, 1,
+                                        now_ms, 20, 10, &measurement) ==
+              V2S_MEASUREMENT_OK);
+        CHECK(measurement.reliability == (double)outcome);
+        CHECK(((measurement.measured_mask & V2S_METRIC_THROUGHPUT) != 0) ==
+              (outcome && (metrics & V2S_METRIC_THROUGHPUT) != 0));
+        CHECK(((measurement.measured_mask & V2S_METRIC_LATENCY) != 0) ==
+              (outcome && (metrics & V2S_METRIC_LATENCY) != 0));
+        if (!outcome) {
+            CHECK(measurement.throughput_mbps == 0.0);
+            CHECK(measurement.latency_ms == 0.0);
+        }
+    }
+}
+
 static void test_generated_observation_windows_preserve_ratio_and_mask_invariants(void) {
     current_test = "generated_observation_windows_preserve_ratio_and_mask_invariants";
     uint32_t iteration;
@@ -413,11 +468,12 @@ int main(void) {
     test_completed_scheduler_task_conversion_preserves_only_caller_metrics();
     test_scheduler_states_without_completed_attempt_do_not_aggregate();
     test_scheduler_observation_conversion_errors_are_transactional();
+    test_generated_scheduler_observation_handoffs_preserve_evidence();
     test_generated_observation_windows_preserve_ratio_and_mask_invariants();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect measurement test(s) failed.\n", failures);
         return 1;
     }
-    puts("14 Smart Connect measurement tests passed (including 500 generated windows).");
+    puts("15 Smart Connect measurement tests passed (including 500 generated windows and 500 scheduler handoffs).");
     return 0;
 }
