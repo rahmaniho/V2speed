@@ -35,7 +35,7 @@
 - All six C test executables compiled with `-Wall -Wextra -Werror -pedantic -fsanitize=address,undefined`; all tests **passed** with leak detection enabled.
 - All six production C sources compiled with GCC `-fanalyzer -Wall -Wextra -Werror -pedantic` — **passed**.
 - GCC/gcov scoring coverage — **100% source lines and branches executed**, **96.04% branch outcomes taken at least once**. Connection reducer — **100% source lines and branches executed (67/67 lines, 56/56 branches)**, **100% branch outcomes taken at least once**. Fallback planner — **100% source lines and branches (53/53 lines, 58/58 branches)**, **91.38% branch outcomes taken at least once**. Coverage files were temporary.
-- Both `.github/workflows/*.yml` workflows — parsed locally. GitHub Actions passed both jobs (`smart-connect-tests`, `verify-brand-assets`) on PR head `58e9ddc`, including the stability policy and scorer handoff; the probe-scheduling planner change still requires a new run.
+- Both `.github/workflows/*.yml` workflows — parsed locally. GitHub Actions passed both PR jobs (`smart-connect-tests`, `verify-brand-assets`) on head `46d7a94`.
 - CMake 4.4.5 configure/build and CTest — **passed** all six domain suites; the tool was installed temporarily under `/tmp`.
 - GCC/gcov probe-plan coverage — **95.31% of 128 lines**, **98.84% of branches executed**, and **73.84% branch outcomes taken at least once**.
 - GCC/gcov measurement aggregator coverage — **99.06% of 106 lines**, **100.00% of branches executed**, and **91.51% branch outcomes taken at least once**.
