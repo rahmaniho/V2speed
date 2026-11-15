@@ -36,10 +36,9 @@ jobs:
           import sys
           from pathlib import Path
           lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
-          selected = [line for line in lines if any(token in line.lower() for token in ("fail", "error", "not found", "no tests", "assert", "segmentation"))]
-          for line in selected[-40:]:
-              escaped = line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-              print(f"::error title=CTest failure detail::{escaped[:900]}")
+          detail = " | ".join(lines[-120:])
+          escaped = detail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=CTest failure log::{escaped[:10000]}")
           PY
             cat "${{ runner.temp }}/v2speed-ctest.log"
           fi
