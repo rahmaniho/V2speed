@@ -80,7 +80,13 @@ class SubscriptionParserTests(unittest.TestCase):
         finally:
             SERVER.LAST_FORCED_REFRESH = previous
 
+    def test_ui_offers_copyable_source_subscription_links(self):
+        page = (SERVER.WEB_ROOT / "app.html").read_text()
+        self.assertIn("کپی لینک اشتراک", page)
+        self.assertIn("copyText(source.url)", page)
+
 
 if __name__ == "__main__":
+
 
     unittest.main()

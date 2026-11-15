@@ -1,4 +1,4 @@
-const CACHE_NAME = 'v2speed-app-shell-v2';
+const CACHE_NAME = 'v2speed-app-shell-v3';
 const SHELL_FILES = [
   '/',
   '/csv',
