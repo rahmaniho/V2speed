@@ -338,6 +338,33 @@ static void test_generated_observation_batches_rank_the_fresh_best_server(void) 
     }
 }
 
+static void test_maximum_candidate_batch_fits_session_aggregation_path(void) {
+    current_test = "maximum_candidate_batch_fits_session_aggregation_path";
+    V2SSmartConnectSession session;
+    V2SSessionProbeBatch batches[V2S_MAX_CANDIDATES];
+    V2SProbeObservation observations[V2S_MAX_CANDIDATES];
+    char server_ids[V2S_MAX_CANDIDATES][V2S_SERVER_ID_CAPACITY];
+    char selected[V2S_SERVER_ID_CAPACITY];
+    uint64_t generation = 0;
+    size_t i;
+    for (i = 0; i < V2S_MAX_CANDIDATES; i++) {
+        (void)snprintf(server_ids[i], sizeof(server_ids[i]), "node-%03zu", i);
+        observations[i] = (V2SProbeObservation){
+            49999, 1, V2S_METRIC_THROUGHPUT, 25.0, 0.0
+        };
+        batches[i] = (V2SSessionProbeBatch){server_ids[i], 1, &observations[i], 1};
+    }
+    CHECK(v2s_smart_session_init(&session, 1) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, batches, V2S_MAX_CANDIDATES,
+              50000, 100, 50, NULL) == V2S_SESSION_OK);
+    CHECK(session.ranked_count == V2S_MAX_CANDIDATES);
+    CHECK(v2s_smart_session_next_candidate(&session, generation, selected) ==
+          V2S_SESSION_OK);
+    CHECK(strcmp(selected, "node-000") == 0);
+}
+
 int main(void) {
     test_rank_fallback_and_verified_connection_flow();
     test_connect_state_is_not_fabricated_before_verified_success();
@@ -355,10 +382,11 @@ int main(void) {
     test_all_stale_observation_batches_exhaust_without_fake_metrics();
     test_observation_batch_count_and_pointer_are_bounded();
     test_generated_observation_batches_rank_the_fresh_best_server();
+    test_maximum_candidate_batch_fits_session_aggregation_path();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect session test(s) failed.\n", failures);
         return 1;
     }
-    puts("16 Smart Connect session tests passed (including 250 generated observation batches).");
+    puts("17 Smart Connect session tests passed (including 250 generated observation batches and 256-candidate maximum).");
     return 0;
 }
