@@ -208,6 +208,109 @@ static void test_null_output_buffers_are_rejected_transactionally(void) {
     CHECK(count == 77);
 }
 
+static uint32_t next_random(uint32_t *state) {
+    *state = *state * UINT32_C(1664525) + UINT32_C(1013904223);
+    return *state;
+}
+
+static size_t count_in_flight(const V2SProbePlan *plan) {
+    size_t count = 0;
+    size_t i;
+    for (i = 0; i < plan->candidate_count; i++) {
+        if (plan->tasks[i].state == V2S_PROBE_TASK_IN_FLIGHT) count++;
+    }
+    return count;
+}
+
+static int plan_invariants_hold(const V2SProbePlan *plan) {
+    return plan->in_flight_count == count_in_flight(plan) &&
+           plan->in_flight_count <= plan->concurrency_limit &&
+           plan->next_candidate <= plan->candidate_count;
+}
+
+static void test_generated_schedules_preserve_invariants(void) {
+    current_test = "generated_schedules_preserve_invariants";
+    uint32_t random_state = UINT32_C(0x51a7c0de);
+    size_t trial;
+    for (trial = 0; trial < 500; trial++) {
+        V2SProbePlan plan;
+        size_t expired[V2S_MAX_PROBE_PLAN_CANDIDATES];
+        size_t expired_count = 0;
+        size_t candidate_count = 1 + next_random(&random_state) % 16;
+        size_t concurrency = 1 + next_random(&random_state) % 8;
+        uint64_t timeout_ms = 1 + next_random(&random_state) % 20;
+        uint64_t now_ms = 100;
+        uint64_t deadline_ms = 105 + next_random(&random_state) % 80;
+        size_t step;
+        CHECK(v2s_probe_plan_init(&plan, candidate_count, concurrency, timeout_ms,
+                                  now_ms, deadline_ms) == V2S_PROBE_PLAN_OK);
+        for (step = 0; step < 128 && now_ms < deadline_ms; step++) {
+            size_t index;
+            size_t offset;
+            V2SProbePlanStatus status;
+            CHECK(plan_invariants_hold(&plan));
+            if (next_random(&random_state) % 4 == 0) {
+                status = v2s_probe_plan_expire(&plan, now_ms, expired,
+                                               V2S_MAX_PROBE_PLAN_CANDIDATES,
+                                               &expired_count);
+                CHECK(status == V2S_PROBE_PLAN_OK);
+                CHECK(plan_invariants_hold(&plan));
+            }
+            status = v2s_probe_plan_next(&plan, now_ms, &index);
+            if (status == V2S_PROBE_PLAN_OK) {
+                CHECK(index < candidate_count);
+                CHECK(plan.tasks[index].state == V2S_PROBE_TASK_IN_FLIGHT);
+            } else {
+                CHECK(status == V2S_PROBE_PLAN_BUSY || status == V2S_PROBE_PLAN_COMPLETE ||
+                      status == V2S_PROBE_PLAN_DEADLINE_REACHED);
+            }
+            CHECK(plan_invariants_hold(&plan));
+            if (plan.in_flight_count != 0 && next_random(&random_state) % 3 != 0) {
+                size_t start = next_random(&random_state) % candidate_count;
+                size_t active_index = candidate_count;
+                for (offset = 0; offset < candidate_count; offset++) {
+                    size_t candidate = (start + offset) % candidate_count;
+                    if (plan.tasks[candidate].state == V2S_PROBE_TASK_IN_FLIGHT) {
+                        active_index = candidate;
+                        break;
+                    }
+                }
+                CHECK(active_index < candidate_count);
+                {
+                    uint64_t completed_at = now_ms + next_random(&random_state) % 20;
+                    status = v2s_probe_plan_complete(&plan, active_index, completed_at,
+                                                     (uint8_t)(next_random(&random_state) & 1));
+                    CHECK(status == V2S_PROBE_PLAN_OK || status == V2S_PROBE_PLAN_TIMED_OUT);
+                    if (completed_at > now_ms) now_ms = completed_at;
+                }
+                CHECK(plan_invariants_hold(&plan));
+            }
+            if (next_random(&random_state) % 97 == 0) {
+                size_t active[V2S_MAX_PROBE_CONCURRENCY];
+                size_t active_count = 0;
+                CHECK(v2s_probe_plan_cancel(&plan, active,
+                                            V2S_MAX_PROBE_CONCURRENCY,
+                                            &active_count) == V2S_PROBE_PLAN_OK);
+                CHECK(active_count <= concurrency);
+                CHECK(plan_invariants_hold(&plan));
+                break;
+            }
+            now_ms += 1 + next_random(&random_state) % 7;
+        }
+        if (!plan.cancelled) {
+            CHECK(v2s_probe_plan_expire(&plan, deadline_ms, expired,
+                                        V2S_MAX_PROBE_PLAN_CANDIDATES,
+                                        &expired_count) == V2S_PROBE_PLAN_OK);
+            CHECK(plan.in_flight_count == 0);
+            for (step = 0; step < candidate_count; step++) {
+                CHECK(plan.tasks[step].state != V2S_PROBE_TASK_PENDING);
+                CHECK(plan.tasks[step].state != V2S_PROBE_TASK_IN_FLIGHT);
+            }
+        }
+        CHECK(plan_invariants_hold(&plan));
+    }
+}
+
 static void test_initialization_policy_and_null_arguments(void) {
     current_test = "initialization_policy_and_null_arguments";
     V2SProbePlan plan;
@@ -236,11 +339,12 @@ int main(void) {
     test_exhausted_dispatch_waits_for_in_flight_work();
     test_corrupt_plan_state_is_rejected_transactionally();
     test_null_output_buffers_are_rejected_transactionally();
+    test_generated_schedules_preserve_invariants();
     test_initialization_policy_and_null_arguments();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect probe-plan test(s) failed.\n", failures);
         return 1;
     }
-    puts("12 Smart Connect probe-plan tests passed.");
+    puts("13 Smart Connect probe-plan tests passed (including 500 generated schedules).");
     return 0;
 }

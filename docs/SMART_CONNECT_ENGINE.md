@@ -99,11 +99,11 @@ An intermediate score-test run caught a flawed test fixture: unopposed single re
 
 ### GREEN / refactor / regression
 
-- `make -C shared/smart-connect test` — **passed**: 17 scoring, 14 connection-state, 11 bounded fallback-planner, 10 session-coordinator, 10 measurement-aggregation, and 12 probe-plan tests. Generated checks cover 1,000 ranking batches, 10,000 reducer events, 250 fallback plans, 500 observation windows, concurrency caps, timeout/deadline boundaries, cancellation and transactional expiry results.
+- `make -C shared/smart-connect test` — **passed**: 17 scoring, 14 connection-state, 11 bounded fallback-planner, 10 session-coordinator, 10 measurement-aggregation, and 13 probe-plan tests. Generated checks cover 1,000 ranking batches, 10,000 reducer events, 250 fallback plans, 500 observation windows, and 500 generated probe schedules, plus concurrency caps, timeout/deadline boundaries, cancellation and transactional expiry results.
 - All six C test executables compiled with `-Wall -Wextra -Werror -pedantic -fsanitize=address,undefined`; all **passed** with leak detection enabled.
 - GCC `-fanalyzer` compiled all six production C sources with strict warnings — **passed**.
 - GCC/gcov measurement-aggregator coverage: **99.06% of 106 lines**, **100.00% of branches executed**, and **91.51% of branch outcomes taken at least once**.
-- GCC/gcov probe-plan coverage: **97.66% of 128 lines**, **100% of branches executed**, and **81.40% of branch outcomes taken at least once**.
+- GCC/gcov probe-plan coverage: **97.66% of 128 lines**, **100% of branches executed**, and **83.72% of branch outcomes taken at least once**.
 - GCC/gcov session-coordinator coverage: **86.84% of lines (114 total)**, **98.06% of branches executed**, and **66.99% of branch outcomes taken at least once**. Coverage output was temporary.
 - CMake 4.4.5 configure/build and CTest — **passed** all 6 suites (scorer, connection state, fallback planner, session coordinator, observation aggregation, probe plan). CMake was installed into `/tmp` for local verification; GitHub Actions now also runs the full CMake build before CTest. No build artifacts were added to the repository.
 - GCC/gcov scoring source: **100.00% source lines executed (102/102)**, **100.00% branches executed (101/101)**, **96.04% branch outcomes taken at least once**.
