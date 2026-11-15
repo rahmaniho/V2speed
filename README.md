@@ -41,7 +41,8 @@ Build it with GCC or Clang:
 
 ```sh
 make -C shared/smart-connect demo
-/tmp/v2speed-csv-rank observations.csv 60000 10000
+NOW_MS=$(python3 -c 'import time; print(time.monotonic_ns() // 1_000_000)')
+/tmp/v2speed-csv-rank observations.csv "$NOW_MS" 60000 10000
 ```
 
 The CSV header must be exactly:
@@ -50,7 +51,7 @@ The CSV header must be exactly:
 server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms
 ```
 
-`measured_mask` is a bit mask: `1` = throughput (Mbps), `2` = latency (ms), and `3` = both. Failed attempts use `success=0` and `measured_mask=0`; successful attempts set `success=1`. Use a consistent monotonic millisecond timebase for all rows. The tool takes the newest timestamp in the file as `now`; the two command-line numbers are maximum sample age and recent-success window in milliseconds, with the recent window no greater than the maximum age. Unmeasured values should be `0` and are ignored according to the mask. IDs must be unique per server, at most 63 bytes, and cannot contain commas or quotes. Limits are 256 servers and 64 rows per server.
+`measured_mask` is a bit mask: `1` = throughput (Mbps), `2` = latency (ms), and `3` = both. Failed attempts use `success=0` and `measured_mask=0`; successful attempts set `success=1`. Use a consistent monotonic millisecond timebase for all rows. Supply `NOW_MS` from that same timebase so stale and future samples can be rejected correctly; do not use wall-clock timestamps. The remaining command-line numbers are maximum sample age and recent-success window in milliseconds, with the recent window no greater than the maximum age. If measurements and the command run on the same host using Python's monotonic clock, the example command obtains a compatible current timestamp. Unmeasured values should be `0` and are ignored according to the mask. IDs must be unique per server, at most 63 bytes, and cannot contain commas or quotes. Limits are 256 servers and 64 rows per server.
 
 All imported servers are treated as eligible candidates; exclude unauthorized, expired or incompatible endpoints before importing. The result is an experimental ranking from caller-reported observations, not an independent confirmation of their authenticity or of real-world VPN performance. Run the seven-test CMake suite or `make -C shared/smart-connect test` to exercise the domain tests and CLI demo smoke test.
 

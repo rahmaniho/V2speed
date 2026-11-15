@@ -16,7 +16,7 @@
 - CLI source: `shared/smart-connect/tools/v2speed_csv_rank.c`; synthetic-only smoke fixture: `shared/smart-connect/tests/fixtures/demo_observations.csv`
 - CI: `.github/workflows/smart-connect.yml`
 
-The CSV ranker accepts caller-exported observations in the documented README schema and invokes the same C aggregation and ranking functions. It derives `now_ms` from the newest imported row. It does not collect measurements, contact the listed servers, check endpoint authorization, or verify tunnel state. The checked-in fixture is synthetic and is used only for a CLI smoke test.
+The CSV ranker accepts caller-exported observations in the documented README schema and invokes the same C aggregation and ranking functions. It requires the caller to provide `now_ms` from the same monotonic timebase as the imported rows, so stale/future checks remain meaningful. It does not collect measurements, contact the listed servers, check endpoint authorization, or verify tunnel state. The checked-in fixture is synthetic and is used only for a CLI smoke test.
 
 The code performs no network access, storage, threading, clock reads, memory allocation, logging, packet processing, or secret handling. Scoring callers must provide validated, freshly measured values from appropriate probes. The function cannot establish that a value came from a real network measurement.
 

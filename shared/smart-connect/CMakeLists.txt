@@ -53,5 +53,5 @@ if(BUILD_TESTING)
     add_test(NAME smart_connect_csv_rank_demo
         COMMAND v2speed_csv_rank
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/demo_observations.csv
-            60000 30000)
+            2000 60000 30000)
 endif()

@@ -33,10 +33,22 @@ COMMON_FLAGS="-std=c11 -Wall -Wextra -Werror -pedantic ${CFLAGS:-}"
   "$ROOT/src/smart_connect.c" "$ROOT/src/smart_connect_measurements.c" \
   "$ROOT/src/smart_connect_probe_plan.c" "$ROOT/tools/v2speed_csv_rank.c" \
   -lm -o "$TMP_DIR/v2speed_csv_rank"
-"$TMP_DIR/v2speed_csv_rank" "$ROOT/tests/fixtures/demo_observations.csv" 60000 30000 > "$TMP_DIR/ranking.csv" 2> "$TMP_DIR/ranking.stderr"
+"$TMP_DIR/v2speed_csv_rank" "$ROOT/tests/fixtures/demo_observations.csv" 2000 60000 30000 > "$TMP_DIR/ranking.csv" 2> "$TMP_DIR/ranking.stderr"
 grep -q '^rank,server_id,score,' "$TMP_DIR/ranking.csv"
 grep -q '^1,beta,' "$TMP_DIR/ranking.csv"
 grep -q 'no probes or network checks were run' "$TMP_DIR/ranking.stderr"
+if "$TMP_DIR/v2speed_csv_rank" "$ROOT/tests/fixtures/demo_observations.csv" 1999 60000 30000 > /dev/null 2>&1; then
+  echo 'CSV ranker accepted a future-dated observation.' >&2
+  exit 1
+fi
+cat > "$TMP_DIR/malformed.csv" <<'CSV'
+server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms
+bad,1000,0,1,0,0
+CSV
+if "$TMP_DIR/v2speed_csv_rank" "$TMP_DIR/malformed.csv" 1000 60000 30000 > /dev/null 2>&1; then
+  echo 'CSV ranker accepted metrics on a failed attempt.' >&2
+  exit 1
+fi
 "$TMP_DIR/test_smart_connect"
 "$TMP_DIR/test_connection_state"
 "$TMP_DIR/test_fallback_planner"

@@ -18,7 +18,7 @@ typedef struct ServerRows {
 
 static void usage(const char *program) {
     (void)fprintf(stderr,
-                  "Usage: %s OBSERVATIONS.csv MAX_AGE_MS RECENT_WINDOW_MS\n"
+                  "Usage: %s OBSERVATIONS.csv NOW_MS MAX_AGE_MS RECENT_WINDOW_MS\n"
                   "CSV header: server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms\n"
                   "Mask bits: 1=throughput, 2=latency, 3=both; failed rows use mask 0.\n",
                   program);
@@ -82,8 +82,7 @@ static ServerRows *find_or_add_server(ServerRows servers[V2S_MAX_CANDIDATES],
 
 static int read_csv(FILE *input,
                     ServerRows servers[V2S_MAX_CANDIDATES],
-                    size_t *server_count,
-                    uint64_t *now_ms) {
+                    size_t *server_count) {
     char line[CSV_LINE_CAPACITY];
     size_t line_number = 0;
     int saw_header = 0;
@@ -141,8 +140,6 @@ static int read_csv(FILE *input,
         server->observations[server->count++] = (V2SProbeObservation){
             timestamp, (uint8_t)success, (uint32_t)mask, throughput, latency
         };
-        if (*server_count == 1 && server->count == 1) *now_ms = timestamp;
-        else if (timestamp > *now_ms) *now_ms = timestamp;
     }
     if (ferror(input)) {
         (void)fprintf(stderr, "Failed while reading CSV input.\n");
@@ -171,18 +168,19 @@ int main(int argc, char **argv) {
     size_t measurement_count = 0;
     size_t ranked_count = 0;
     size_t i;
-    uint64_t now_ms = 0;
+    uint64_t now_ms;
     uint64_t max_age_ms;
     uint64_t recent_window_ms;
     FILE *input;
-    if (argc != 4) {
+    if (argc != 5) {
         usage(argv[0]);
         return 2;
     }
-    if (!parse_u64(argv[2], &max_age_ms) || max_age_ms == 0 ||
-        !parse_u64(argv[3], &recent_window_ms) || recent_window_ms == 0 ||
+    if (!parse_u64(argv[2], &now_ms) ||
+        !parse_u64(argv[3], &max_age_ms) || max_age_ms == 0 ||
+        !parse_u64(argv[4], &recent_window_ms) || recent_window_ms == 0 ||
         recent_window_ms > max_age_ms) {
-        (void)fprintf(stderr, "Age windows must be positive integers; recent must not exceed max age.\n");
+        (void)fprintf(stderr, "NOW_MS must be a nonnegative integer; age windows must be positive and recent must not exceed max age.\n");
         return 2;
     }
     input = fopen(argv[1], "r");
@@ -190,7 +188,7 @@ int main(int argc, char **argv) {
         (void)fprintf(stderr, "Cannot open '%s': %s\n", argv[1], strerror(errno));
         return 2;
     }
-    if (!read_csv(input, servers, &server_count, &now_ms)) {
+    if (!read_csv(input, servers, &server_count)) {
         (void)fclose(input);
         return 2;
     }
