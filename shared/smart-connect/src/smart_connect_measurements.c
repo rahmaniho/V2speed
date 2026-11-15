@@ -53,6 +53,32 @@ static double median(double values[V2S_MAX_PROBE_OBSERVATIONS], size_t count) {
     return values[count / 2 - 1] / 2.0 + values[count / 2] / 2.0;
 }
 
+static double throughput_stability(const double samples[V2S_MAX_PROBE_OBSERVATIONS], size_t count) {
+    double maximum = 0.0;
+    double mean = 0.0;
+    double sum_squared_deviation = 0.0;
+    size_t i;
+
+    for (i = 0; i < count; i++) {
+        if (samples[i] > maximum) maximum = samples[i];
+    }
+    if (maximum == 0.0) return 1.0;
+
+    /* Normalize before Welford's variance calculation to avoid overflow for
+     * very large but finite throughput values. */
+    for (i = 0; i < count; i++) {
+        const double scaled = samples[i] / maximum;
+        const double delta = scaled - mean;
+        mean += delta / (double)(i + 1);
+        sum_squared_deviation += delta * (scaled - mean);
+    }
+    {
+        const double variance = sum_squared_deviation / (double)count;
+        const double coefficient_of_variation = sqrt(variance < 0.0 ? 0.0 : variance) / mean;
+        return 1.0 / (1.0 + coefficient_of_variation);
+    }
+}
+
 V2SMeasurementStatus v2s_measurement_aggregate(
     const char *server_id,
     uint8_t eligible,
@@ -73,6 +99,8 @@ V2SMeasurementStatus v2s_measurement_aggregate(
     size_t throughput_count = 0;
     size_t latency_count = 0;
     size_t i;
+    uint64_t first_throughput_timestamp = 0;
+    int throughput_timestamps_distinct = 0;
     uint64_t freshness_cutoff;
     uint64_t recent_cutoff;
 
@@ -108,6 +136,10 @@ V2SMeasurementStatus v2s_measurement_aggregate(
         }
         if (!observation->succeeded) continue;
         if ((observation->measured_mask & V2S_METRIC_THROUGHPUT) != 0) {
+            if (throughput_count == 0) first_throughput_timestamp = observation->timestamp_ms;
+            else if (observation->timestamp_ms != first_throughput_timestamp) {
+                throughput_timestamps_distinct = 1;
+            }
             throughput[throughput_count++] = observation->throughput_mbps;
         }
         if ((observation->measured_mask & V2S_METRIC_LATENCY) != 0) {
@@ -127,6 +159,10 @@ V2SMeasurementStatus v2s_measurement_aggregate(
     if (throughput_count != 0) {
         result.measured_mask |= V2S_METRIC_THROUGHPUT;
         result.throughput_mbps = median(throughput, throughput_count);
+        if (throughput_count >= 2 && throughput_timestamps_distinct) {
+            result.measured_mask |= V2S_METRIC_STABILITY;
+            result.stability = throughput_stability(throughput, throughput_count);
+        }
     }
     if (latency_count != 0) {
         result.measured_mask |= V2S_METRIC_LATENCY;

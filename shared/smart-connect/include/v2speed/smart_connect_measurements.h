@@ -21,8 +21,9 @@ typedef enum V2SMeasurementStatus {
     V2S_MEASUREMENT_NO_FRESH_ATTEMPTS = 4
 } V2SMeasurementStatus;
 
-/* One caller-reported probe result. The timestamp and measurements must use
- * the caller's monotonic timebase. This library cannot verify probe authenticity. */
+/* One caller-reported probe result. succeeded is the caller's probe outcome,
+ * not independent tunnel verification. Timestamps and values use the caller's
+ * monotonic timebase; this library cannot verify probe authenticity. */
 typedef struct V2SProbeObservation {
     uint64_t timestamp_ms;
     uint8_t succeeded;
@@ -37,8 +38,11 @@ typedef struct V2SProbeObservation {
  * entire batch. Latency/throughput use the median of fresh successful samples.
  * Reliability is successes / all fresh attempts; recent_success uses attempts
  * inside recent_window_ms. Missing metric samples remain absent, not zero.
- * Stability is intentionally not synthesized by this function.
- * The output is unchanged unless V2S_MEASUREMENT_OK is returned.
+ * With at least two fresh throughput samples at distinct timestamps, stability
+ * is 1/(1+CV), where CV is population standard deviation / mean; all-zero
+ * samples yield 1.0.
+ * This is an initial, uncalibrated metric policy. Output is unchanged unless
+ * V2S_MEASUREMENT_OK is returned.
  */
 V2SMeasurementStatus v2s_measurement_aggregate(
     const char *server_id,

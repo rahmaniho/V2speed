@@ -1,5 +1,6 @@
 #include "v2speed/smart_connect_measurements.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -47,12 +48,13 @@ static void test_medians_and_rates_aggregate_only_observed_metrics(void) {
     CHECK(strcmp(result.server_id, "median") == 0);
     CHECK(result.eligible == 1);
     CHECK(result.measured_mask == (V2S_METRIC_THROUGHPUT | V2S_METRIC_LATENCY |
-                                   V2S_METRIC_RELIABILITY | V2S_METRIC_RECENT_SUCCESS));
+                                   V2S_METRIC_RELIABILITY | V2S_METRIC_RECENT_SUCCESS |
+                                   V2S_METRIC_STABILITY));
     CHECK(fabs(result.throughput_mbps - 40.0) < 1e-12);
     CHECK(fabs(result.latency_ms - 30.0) < 1e-12);
     CHECK(fabs(result.reliability - 0.75) < 1e-12);
     CHECK(fabs(result.recent_success - (2.0 / 3.0)) < 1e-12);
-    CHECK(result.stability == 0.0);
+    CHECK(result.stability > 0.0 && result.stability < 1.0);
 }
 
 static void test_stale_samples_do_not_contaminate_fresh_metrics(void) {
@@ -82,6 +84,41 @@ static void test_all_failed_attempts_are_evidence_not_fake_speed(void) {
     CHECK(result.recent_success == 0.0);
     CHECK(result.throughput_mbps == 0.0);
     CHECK(result.latency_ms == 0.0);
+}
+
+static void test_stability_is_derived_only_from_repeated_throughput_samples(void) {
+    current_test = "stability_is_derived_only_from_repeated_throughput_samples";
+    const V2SProbeObservation repeated[] = {
+        sample(950, 1, V2S_METRIC_THROUGHPUT, 100, 0),
+        sample(970, 1, V2S_METRIC_THROUGHPUT, 300, 0)
+    };
+    const V2SProbeObservation single[] = { sample(970, 1, V2S_METRIC_THROUGHPUT, 200, 0) };
+    const V2SProbeObservation same_timestamp[] = {
+        sample(970, 1, V2S_METRIC_THROUGHPUT, 100, 0),
+        sample(970, 1, V2S_METRIC_THROUGHPUT, 300, 0)
+    };
+    const V2SProbeObservation zeroes[] = {
+        sample(950, 1, V2S_METRIC_THROUGHPUT, 0, 0),
+        sample(970, 1, V2S_METRIC_THROUGHPUT, 0, 0)
+    };
+    const V2SProbeObservation extremes[] = {
+        sample(950, 1, V2S_METRIC_THROUGHPUT, DBL_MAX, 0),
+        sample(970, 1, V2S_METRIC_THROUGHPUT, DBL_MAX, 0)
+    };
+    V2SServerMeasurement result;
+    CHECK(v2s_measurement_aggregate("stable", 1, repeated, 2, 1000, 100, 50, &result) == V2S_MEASUREMENT_OK);
+    CHECK((result.measured_mask & V2S_METRIC_STABILITY) != 0);
+    CHECK(fabs(result.stability - (2.0 / 3.0)) < 1e-12);
+    CHECK(v2s_measurement_aggregate("single", 1, single, 1, 1000, 100, 50, &result) == V2S_MEASUREMENT_OK);
+    CHECK((result.measured_mask & V2S_METRIC_STABILITY) == 0);
+    CHECK(v2s_measurement_aggregate("same-time", 1, same_timestamp, 2, 1000, 100, 50, &result) == V2S_MEASUREMENT_OK);
+    CHECK((result.measured_mask & V2S_METRIC_STABILITY) == 0);
+    CHECK(v2s_measurement_aggregate("zeroes", 1, zeroes, 2, 1000, 100, 50, &result) == V2S_MEASUREMENT_OK);
+    CHECK((result.measured_mask & V2S_METRIC_STABILITY) != 0);
+    CHECK(result.stability == 1.0);
+    CHECK(v2s_measurement_aggregate("extreme", 1, extremes, 2, 1000, 100, 50, &result) == V2S_MEASUREMENT_OK);
+    CHECK(result.throughput_mbps == DBL_MAX);
+    CHECK(result.stability == 1.0);
 }
 
 static void test_success_without_optional_metrics_does_not_invent_zeroes(void) {
@@ -147,6 +184,32 @@ static void test_invalid_ids_masks_and_batch_size_are_rejected(void) {
     CHECK(v2s_measurement_aggregate("bad-eligibility", 2, valid, 1, 100, 20, 10, &output) == V2S_MEASUREMENT_INVALID_ARGUMENT);
 }
 
+static void test_aggregated_observations_feed_the_ranker_without_fabricated_metrics(void) {
+    current_test = "aggregated_observations_feed_the_ranker_without_fabricated_metrics";
+    const V2SProbeObservation fast_observations[] = {
+        sample(950, 1, V2S_METRIC_THROUGHPUT, 100, 0),
+        sample(970, 1, V2S_METRIC_THROUGHPUT, 100, 0)
+    };
+    const V2SProbeObservation slow_observations[] = {
+        sample(950, 1, V2S_METRIC_THROUGHPUT, 10, 0),
+        sample(970, 1, V2S_METRIC_THROUGHPUT, 10, 0)
+    };
+    const uint8_t speed_only[V2S_SMART_CONNECT_METRIC_COUNT] = {100, 0, 0, 0, 0};
+    V2SServerMeasurement candidates[2];
+    V2SRankedCandidate ranked[2];
+    size_t ranked_count = 0;
+    CHECK(v2s_measurement_aggregate("fast", 1, fast_observations, 2, 1000, 100, 50,
+                                    &candidates[0]) == V2S_MEASUREMENT_OK);
+    CHECK(v2s_measurement_aggregate("slow", 1, slow_observations, 2, 1000, 100, 50,
+                                    &candidates[1]) == V2S_MEASUREMENT_OK);
+    CHECK((candidates[0].measured_mask & V2S_METRIC_LATENCY) == 0);
+    CHECK(v2s_smart_connect_rank_with_weights(candidates, 2, speed_only, ranked, 2,
+                                               &ranked_count) == V2S_STATUS_OK);
+    CHECK(ranked_count == 2);
+    CHECK(ranked[0].input_index == 0);
+    CHECK(ranked[1].input_index == 1);
+}
+
 static void test_generated_observation_windows_preserve_ratio_and_mask_invariants(void) {
     current_test = "generated_observation_windows_preserve_ratio_and_mask_invariants";
     uint32_t iteration;
@@ -162,6 +225,8 @@ static void test_generated_observation_windows_preserve_ratio_and_mask_invariant
         size_t recent_successes = 0;
         size_t throughput_count = 0;
         size_t latency_count = 0;
+        uint64_t first_throughput_timestamp = 0;
+        int throughput_timestamps_distinct = 0;
         uint8_t eligible = (uint8_t)(next_random() & 1u);
 
         observations[0] = sample(now_ms - (next_random() % 3000u), 1,
@@ -185,7 +250,13 @@ static void test_generated_observation_windows_preserve_ratio_and_mask_invariant
             fresh_count++;
             if (observations[i].succeeded) {
                 fresh_successes++;
-                if ((observations[i].measured_mask & V2S_METRIC_THROUGHPUT) != 0) throughput_count++;
+                if ((observations[i].measured_mask & V2S_METRIC_THROUGHPUT) != 0) {
+                    if (throughput_count == 0) first_throughput_timestamp = observations[i].timestamp_ms;
+                    else if (observations[i].timestamp_ms != first_throughput_timestamp) {
+                        throughput_timestamps_distinct = 1;
+                    }
+                    throughput_count++;
+                }
                 if ((observations[i].measured_mask & V2S_METRIC_LATENCY) != 0) latency_count++;
             }
             if (observations[i].timestamp_ms >= now_ms - 5000) {
@@ -202,7 +273,9 @@ static void test_generated_observation_windows_preserve_ratio_and_mask_invariant
         CHECK(fabs(result.recent_success - (double)recent_successes / (double)recent_count) < 1e-12);
         CHECK(((result.measured_mask & V2S_METRIC_THROUGHPUT) != 0) == (throughput_count != 0));
         CHECK(((result.measured_mask & V2S_METRIC_LATENCY) != 0) == (latency_count != 0));
-        CHECK((result.measured_mask & V2S_METRIC_STABILITY) == 0);
+        CHECK(((result.measured_mask & V2S_METRIC_STABILITY) != 0) ==
+              (throughput_count >= 2 && throughput_timestamps_distinct));
+        CHECK(result.stability >= 0.0 && result.stability <= 1.0);
     }
 }
 
@@ -210,15 +283,17 @@ int main(void) {
     test_medians_and_rates_aggregate_only_observed_metrics();
     test_stale_samples_do_not_contaminate_fresh_metrics();
     test_all_failed_attempts_are_evidence_not_fake_speed();
+    test_stability_is_derived_only_from_repeated_throughput_samples();
     test_success_without_optional_metrics_does_not_invent_zeroes();
     test_future_or_malformed_sample_rejects_batch_transactionally();
     test_empty_fresh_window_and_invalid_policy_are_explicit();
     test_invalid_ids_masks_and_batch_size_are_rejected();
+    test_aggregated_observations_feed_the_ranker_without_fabricated_metrics();
     test_generated_observation_windows_preserve_ratio_and_mask_invariants();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect measurement test(s) failed.\n", failures);
         return 1;
     }
-    puts("8 Smart Connect measurement tests passed (including 500 generated windows).");
+    puts("10 Smart Connect measurement tests passed (including 500 generated windows).");
     return 0;
 }
