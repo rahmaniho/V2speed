@@ -34,7 +34,7 @@ jobs:
           mkdir -p "$analyzer_dir"
           for source in shared/smart-connect/src/*.c; do
             object="$analyzer_dir/$(basename "${source%.c}").o"
-            gcc -std=c11 -Wall -Wextra -Werror -pedantic -fanalyzer \\
+            gcc -std=c11 -Wall -Wextra -Werror -pedantic -fanalyzer \
               -I shared/smart-connect/include -c "$source" -o "$object"
           done
       - name: Configure CMake library and test executables
