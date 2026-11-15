@@ -282,6 +282,62 @@ static void test_all_stale_observation_batches_exhaust_without_fake_metrics(void
     CHECK(session.ranked_count == 0);
 }
 
+static void test_observation_batch_count_and_pointer_are_bounded(void) {
+    current_test = "observation_batch_count_and_pointer_are_bounded";
+    V2SSmartConnectSession session;
+    uint64_t generation = 0;
+    CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, NULL, V2S_MAX_CANDIDATES + 1, 1000, 100, 50, NULL) ==
+          V2S_SESSION_INVALID_MEASUREMENTS);
+    CHECK(session.connection.state == V2S_CONNECTION_ERROR);
+    CHECK(session.input_count == 0 && session.ranked_count == 0);
+
+    CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, NULL, 1, 1000, 100, 50, NULL) ==
+          V2S_SESSION_INVALID_MEASUREMENTS);
+    CHECK(session.connection.state == V2S_CONNECTION_ERROR);
+    CHECK(session.input_count == 0 && session.ranked_count == 0);
+}
+
+static void test_generated_observation_batches_rank_the_fresh_best_server(void) {
+    current_test = "generated_observation_batches_rank_the_fresh_best_server";
+    size_t iteration;
+    for (iteration = 0; iteration < 250; iteration++) {
+        V2SSmartConnectSession session;
+        V2SProbeObservation observations[5];
+        V2SSessionProbeBatch batches[5];
+        char server_ids[5][V2S_SERVER_ID_CAPACITY];
+        char selected[V2S_SERVER_ID_CAPACITY];
+        const size_t candidate_count = 2 + iteration % 4;
+        uint64_t generation = 0;
+        size_t i;
+        for (i = 0; i < candidate_count; i++) {
+            (void)snprintf(server_ids[i], sizeof(server_ids[i]), "generated-%zu-%zu",
+                           iteration, i);
+            observations[i] = (V2SProbeObservation){
+                999, 1, V2S_METRIC_THROUGHPUT,
+                (double)(iteration * 10 + i * 5 + 1), 0.0
+            };
+            batches[i] = (V2SSessionProbeBatch){
+                server_ids[i], 1, &observations[i], 1
+            };
+        }
+        CHECK(v2s_smart_session_init(&session, 1) == V2S_SESSION_OK);
+        CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+        CHECK(v2s_smart_session_benchmark_completed_from_observations(
+                  &session, generation, batches, candidate_count, 1000, 100, 50, NULL) ==
+              V2S_SESSION_OK);
+        CHECK(session.ranked_count == candidate_count);
+        CHECK(v2s_smart_session_next_candidate(&session, generation, selected) ==
+              V2S_SESSION_OK);
+        CHECK(strcmp(selected, server_ids[candidate_count - 1]) == 0);
+    }
+}
+
 int main(void) {
     test_rank_fallback_and_verified_connection_flow();
     test_connect_state_is_not_fabricated_before_verified_success();
@@ -297,10 +353,12 @@ int main(void) {
     test_observation_batch_failure_does_not_partially_apply_ranked_ids();
     test_observation_session_rejects_invalid_phase_and_stale_generation();
     test_all_stale_observation_batches_exhaust_without_fake_metrics();
+    test_observation_batch_count_and_pointer_are_bounded();
+    test_generated_observation_batches_rank_the_fresh_best_server();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect session test(s) failed.\n", failures);
         return 1;
     }
-    puts("14 Smart Connect session tests passed.");
+    puts("16 Smart Connect session tests passed (including 250 generated observation batches).");
     return 0;
 }
