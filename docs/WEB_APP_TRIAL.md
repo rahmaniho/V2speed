@@ -2,7 +2,7 @@
 
 ## What is implemented
 
-The prototype is served at `/` by `shared/smart-connect/web-demo/server.py`. It uses the supplied V2Speed wordmark without cropping, provides Persian RTL UI, fetches the three user-specified subscription files from fixed GitHub API routes, parses supported VLESS/VMess/Trojan/Shadowsocks rows, displays endpoint and source attribution, filters the in-memory list, and returns a selected URI only when the user requests copy. The `/csv` route preserves the separate experimental observation-ranking tool.
+The prototype is served at `/` by `shared/smart-connect/web-demo/server.py`. It uses the supplied V2Speed wordmark without cropping, provides Persian RTL UI, fetches the three user-specified subscription files from fixed GitHub API routes, parses supported VLESS/VMess/Trojan/Shadowsocks rows, displays endpoint and source attribution, filters the in-memory list, stores favorite URI hashes (never URI credentials) in the browser's local storage, and returns a selected URI only when the user requests copy. The `/csv` route preserves the separate experimental observation-ranking tool.
 
 The browser client never receives full credentials for every node up front. The server holds the returned subscription data in process memory for up to five minutes and copies a selected URI only on an explicit per-node request. Uploads for the CSV tool are written to a unique temporary file and removed after ranking. No database or persistent storage was introduced. HTTPS deployments also register a PWA manifest and service worker using proportional 192/512 derivatives of the supplied app icon. The worker caches static app-shell assets only; `/api/` subscription and config responses are network-only and never persisted by the browser.
 
