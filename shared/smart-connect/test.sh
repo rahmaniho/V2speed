@@ -6,7 +6,8 @@ CC=${CC:-cc}
 TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/v2speed-smart-connect.XXXXXX")
 trap 'rm -rf "$TMP_DIR"' EXIT HUP INT TERM
 
-COMMON_FLAGS="-std=c11 -Wall -Wextra -Werror -pedantic"
+# CFLAGS is intentionally word-split as additional compiler/linker flags.
+COMMON_FLAGS="-std=c11 -Wall -Wextra -Werror -pedantic ${CFLAGS:-}"
 "$CC" $COMMON_FLAGS -I "$ROOT/include" \
   "$ROOT/src/smart_connect.c" "$ROOT/tests/test_smart_connect.c" \
   -lm -o "$TMP_DIR/test_smart_connect"
