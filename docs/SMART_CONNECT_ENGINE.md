@@ -99,7 +99,7 @@ An intermediate score-test run caught a flawed test fixture: unopposed single re
 
 ### GREEN / refactor / regression
 
-- `make -C shared/smart-connect test` — **passed**: 17 scoring, 14 connection-state, 11 bounded fallback-planner, 10 session-coordinator, 10 measurement-aggregation, and 13 probe-plan tests. Generated checks cover 1,000 ranking batches, 10,000 reducer events, 250 fallback plans, 500 observation windows, and 500 generated probe schedules, plus concurrency caps, timeout/deadline boundaries, cancellation and transactional expiry results.
+- `make -C shared/smart-connect test` — **passed**: 17 scoring, 14 connection-state, 11 bounded fallback-planner, 10 session-coordinator, 10 measurement-aggregation, and 14 probe-plan tests. Generated checks cover 1,000 ranking batches, 10,000 reducer events, 250 fallback plans, 500 observation windows, and 500 generated probe schedules at varied limits, including the 256-candidate/16-concurrency maximum, plus concurrency caps, timeout/deadline boundaries, cancellation and transactional expiry results.
 - All six C test executables compiled with `-Wall -Wextra -Werror -pedantic -fsanitize=address,undefined`; all **passed** with leak detection enabled.
 - GCC `-fanalyzer` compiled all six production C sources with strict warnings — **passed**.
 - GCC/gcov measurement-aggregator coverage: **99.06% of 106 lines**, **100.00% of branches executed**, and **91.51% of branch outcomes taken at least once**.

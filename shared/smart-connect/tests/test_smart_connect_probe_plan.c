@@ -223,9 +223,44 @@ static size_t count_in_flight(const V2SProbePlan *plan) {
 }
 
 static int plan_invariants_hold(const V2SProbePlan *plan) {
-    return plan->in_flight_count == count_in_flight(plan) &&
-           plan->in_flight_count <= plan->concurrency_limit &&
-           plan->next_candidate <= plan->candidate_count;
+    size_t i;
+    if (plan->in_flight_count != count_in_flight(plan) ||
+        plan->in_flight_count > plan->concurrency_limit ||
+        plan->next_candidate > plan->candidate_count) {
+        return 0;
+    }
+    for (i = 0; i < plan->next_candidate; i++) {
+        if (plan->tasks[i].state == V2S_PROBE_TASK_PENDING) return 0;
+    }
+    return 1;
+}
+
+static void test_maximum_candidate_and_concurrency_limits(void) {
+    current_test = "maximum_candidate_and_concurrency_limits";
+    V2SProbePlan plan;
+    size_t batch;
+    size_t index = 99;
+    CHECK(v2s_probe_plan_init(&plan, V2S_MAX_PROBE_PLAN_CANDIDATES,
+                              V2S_MAX_PROBE_CONCURRENCY, 100, 0, 2000) ==
+          V2S_PROBE_PLAN_OK);
+    for (batch = 0; batch < V2S_MAX_PROBE_PLAN_CANDIDATES /
+                                  V2S_MAX_PROBE_CONCURRENCY; batch++) {
+        size_t slot;
+        uint64_t now_ms = batch * 2;
+        for (slot = 0; slot < V2S_MAX_PROBE_CONCURRENCY; slot++) {
+            CHECK(v2s_probe_plan_next(&plan, now_ms, &index) == V2S_PROBE_PLAN_OK);
+            CHECK(index == batch * V2S_MAX_PROBE_CONCURRENCY + slot);
+        }
+        CHECK(v2s_probe_plan_next(&plan, now_ms, &index) == V2S_PROBE_PLAN_BUSY);
+        for (slot = 0; slot < V2S_MAX_PROBE_CONCURRENCY; slot++) {
+            CHECK(v2s_probe_plan_complete(&plan,
+                                          batch * V2S_MAX_PROBE_CONCURRENCY + slot,
+                                          now_ms + 1, (uint8_t)(slot & 1)) ==
+                  V2S_PROBE_PLAN_OK);
+        }
+        CHECK(plan_invariants_hold(&plan));
+    }
+    CHECK(v2s_probe_plan_next(&plan, 32, &index) == V2S_PROBE_PLAN_COMPLETE);
 }
 
 static void test_generated_schedules_preserve_invariants(void) {
@@ -339,12 +374,13 @@ int main(void) {
     test_exhausted_dispatch_waits_for_in_flight_work();
     test_corrupt_plan_state_is_rejected_transactionally();
     test_null_output_buffers_are_rejected_transactionally();
+    test_maximum_candidate_and_concurrency_limits();
     test_generated_schedules_preserve_invariants();
     test_initialization_policy_and_null_arguments();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect probe-plan test(s) failed.\n", failures);
         return 1;
     }
-    puts("13 Smart Connect probe-plan tests passed (including 500 generated schedules).");
+    puts("14 Smart Connect probe-plan tests passed (including 500 generated schedules).");
     return 0;
 }
