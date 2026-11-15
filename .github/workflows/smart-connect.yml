@@ -1,0 +1,29 @@
+name: Smart Connect domain tests
+
+on:
+  push:
+    branches: [main, "arena/**"]
+    paths:
+      - "shared/smart-connect/**"
+      - ".github/workflows/smart-connect.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "shared/smart-connect/**"
+      - ".github/workflows/smart-connect.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smart-connect-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compile and run deterministic Smart Connect tests
+        run: make -C shared/smart-connect test
+      - name: Configure and build the CMake library and test executables
+        run: cmake -S shared/smart-connect -B "${{ runner.temp }}/v2speed-smart-connect-build" -DCMAKE_BUILD_TYPE=Debug
+      - name: Run CTest suite
+        run: ctest --test-dir "${{ runner.temp }}/v2speed-smart-connect-build" --output-on-failure
