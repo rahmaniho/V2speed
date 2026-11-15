@@ -55,6 +55,8 @@ server_id,timestamp_ms,success,measured_mask,throughput_mbps,latency_ms
 
 All imported servers are treated as eligible candidates; exclude unauthorized, expired or incompatible endpoints before importing. The result is an experimental ranking from caller-reported observations, not an independent confirmation of their authenticity or of real-world VPN performance. Run the seven-test CMake suite or `make -C shared/smart-connect test` to exercise the domain tests and CLI demo smoke test.
 
+For a no-terminal browser trial, `shared/smart-connect/web-demo/` contains a small standard-library Python upload UI that builds and invokes the same C ranker. Run it in a trusted local environment with `python3 shared/smart-connect/web-demo/server.py`, then open the shown local address. It accepts CSV uploads up to 1 MB, keeps each upload in a temporary file only while ranking, and never performs network probes.
+
 ## Tooling / verification limitations
 
 At this checkout, GCC, Python 3 and Node.js are available; GCC was used for the portable domain core. Java/JDK, Gradle executable, Kotlin compiler, Android SDK/ADB, Go, Xcode/Swift and Apple Network Extension entitlements are not available. Therefore native client build/runtime verification cannot be performed here. The exact missing test evidence is recorded rather than presented as complete.

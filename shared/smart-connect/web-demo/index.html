@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>آزمایش رتبه‌بندی Smart Connect | V2Speed</title>
+  <style>
+    :root { color-scheme: dark; --bg:#09121c; --panel:#111e2b; --line:#233648; --muted:#9ab0c3; --text:#eef6fb; --green:#79e0b0; --blue:#8cc8ff; --red:#ff9e9e; }
+    * { box-sizing:border-box }
+    body { margin:0; background:radial-gradient(ellipse at 88% -10%,#183d3a 0,transparent 37%),var(--bg); color:var(--text); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.65 }
+    main { width:min(980px,calc(100% - 32px)); margin:40px auto 72px }
+    header { margin-bottom:24px }
+    .eyebrow { color:var(--green); font-size:.8rem; font-weight:700; letter-spacing:.08em }
+    h1 { margin:5px 0 8px; font-size:clamp(1.65rem,4vw,2.35rem); letter-spacing:-.03em }
+    p { margin:8px 0; color:var(--muted) }
+    .panel { background:linear-gradient(150deg,rgba(20,35,49,.97),rgba(14,26,38,.97)); border:1px solid var(--line); border-radius:18px; padding:24px; box-shadow:0 22px 70px #0003; margin:18px 0 }
+    .warning { border-right:3px solid #f0bd65; padding:12px 15px; background:#3a2e1e66; border-radius:9px; color:#f4d79d; font-size:.93rem }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin-top:18px }
+    label { display:block; color:#d8e7f2; font-size:.9rem; font-weight:650; margin-bottom:6px }
+    input[type=number],input[type=file] { width:100%; border:1px solid #2b4256; background:#0b1723; color:var(--text); border-radius:10px; padding:11px 12px; font:inherit }
+    input[type=file] { padding:10px; font-size:.88rem }
+    input:focus { outline:2px solid #72d8ae55; border-color:var(--green) }
+    .hint { font-size:.78rem; color:var(--muted); margin-top:4px }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px }
+    button { border:1px solid transparent; border-radius:10px; padding:10px 16px; color:#06140f; background:var(--green); font:inherit; font-weight:750; cursor:pointer }
+    button.secondary { background:#172a3b; color:var(--text); border-color:#2b4256 }
+    button:disabled { opacity:.55; cursor:wait }
+    .status { display:none; margin-top:16px; border-radius:10px; padding:12px 15px; white-space:pre-wrap }
+    .status.error { display:block; background:#3b2026; color:var(--red); border:1px solid #71333c }
+    .status.ok { display:block; background:#142c27; color:#b9f4d4; border:1px solid #275341 }
+    .result-top { display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap }
+    .result-top h2 { margin:0; font-size:1.2rem }
+    .table-wrap { overflow:auto; margin-top:16px; border:1px solid var(--line); border-radius:10px }
+    table { border-collapse:collapse; width:100%; min-width:810px; text-align:right; font-size:.87rem }
+    th,td { padding:10px 12px; border-bottom:1px solid #203244; white-space:nowrap }
+    th { color:#aac3d7; background:#0c1824; font-weight:650 }
+    tr:last-child td { border-bottom:0 }
+    tbody tr:first-child td { color:#b9f4d4 }
+    code { direction:ltr; unicode-bidi:embed; color:#c3e2ff; background:#0a1722; border:1px solid #263c50; border-radius:5px; padding:1px 5px }
+    details { margin-top:16px; color:var(--muted); font-size:.88rem }
+    summary { color:#c3d6e4; cursor:pointer }
+    .foot { text-align:center; color:#768da1; font-size:.8rem; margin-top:24px }
+    @media(max-width:700px) { main{margin-top:24px}.panel{padding:18px}.grid{grid-template-columns:1fr;gap:10px} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">V2SPEED · LAB TOOL</div>
+    <h1>آزمایش رتبه‌بندی Smart Connect</h1>
+    <p>فایل اندازه‌گیری‌های خودتان را انتخاب کنید تا هستهٔ C آن‌ها را تجمیع و رتبه‌بندی کند.</p>
+  </header>
+
+  <section class="panel">
+    <div class="warning"><strong>محدودیت مهم:</strong> این ابزار CSV را تحلیل می‌کند؛ probe شبکه اجرا نمی‌کند، به سرورها وصل نمی‌شود و تونل VPN را نمی‌سنجد. نمونهٔ نمایشی مصنوعی است. فایل بارگذاری‌شده فقط موقتاً برای اجرای رتبه‌بند استفاده و سپس حذف می‌شود.</div>
+    <form id="form">
+      <div style="margin-top:18px">
+        <label for="file">فایل CSV</label>
+        <input id="file" type="file" accept=".csv,text/csv" required>
+        <div class="hint">ستون‌ها باید دقیقاً باشند: server_id, timestamp_ms, success, measured_mask, throughput_mbps, latency_ms</div>
+      </div>
+      <div class="grid">
+        <div>
+          <label for="now">زمان مرجع NOW_MS</label>
+          <input id="now" type="number" min="0" step="1" required>
+          <div class="hint">از همان ساعت یکنواختی باشد که زمان‌های CSV با آن ثبت شده‌اند. هنگام انتخاب فایل، به‌طور پیش‌فرض برابر جدیدترین timestamp می‌شود.</div>
+        </div>
+        <div>
+          <label for="age">حداکثر عمر نمونه (ms)</label>
+          <input id="age" type="number" min="1" step="1" value="60000" required>
+        </div>
+        <div>
+          <label for="recent">پنجرهٔ موفقیت اخیر (ms)</label>
+          <input id="recent" type="number" min="1" step="1" value="10000" required>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="run" type="submit">رتبه‌بندی CSV</button>
+        <button id="demo" class="secondary" type="button">بارگذاری نمونهٔ نمایشی</button>
+      </div>
+    </form>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <section id="results" class="panel" hidden>
+    <div class="result-top"><h2>نتیجه</h2><span class="hint">امتیاز بر اساس وزن‌های پیش‌فرض هستهٔ Smart Connect است.</span></div>
+    <div id="notice" class="hint" style="margin-top:6px"></div>
+    <div id="table" class="table-wrap"></div>
+  </section>
+
+  <section class="panel">
+    <strong>قالب داده</strong>
+    <p><code>measured_mask</code>: مقدار ۱ برای سرعت، ۲ برای تأخیر، ۳ برای هر دو. تلاش ناموفق باید <code>success=0</code> و mask برابر صفر داشته باشد؛ مقدار metric اندازه‌گیری‌نشده را صفر بگذارید. حداکثر ۲۵۶ سرور و ۶۴ مشاهده برای هر سرور پذیرفته می‌شود.</p>
+    <p>همهٔ سرورها نامزد مجاز فرض می‌شوند؛ سرورهای غیرمجاز، منقضی یا ناسازگار را پیش از واردکردن حذف کنید.</p>
+    <details>
+      <summary>دربارهٔ زمان مرجع و تازگی داده‌ها</summary>
+      <p>برای بررسی واقعیِ قدیمی/آینده بودن، NOW_MS باید از همان timebase یکنواخت timestampها بیاید. مقدار خودکارِ جدیدترین timestamp صرفاً برای تحلیل یک batch و نمونهٔ نمایشی مناسب است؛ به‌تنهایی ثابت نمی‌کند که داده نسبت به زمان فعلی تازه است. از timestamp تقویمی/Unix به جای monotonic استفاده نکنید.</p>
+    </details>
+  </section>
+  <div class="foot">نسخهٔ آزمایشی دامنه‌ای · بدون اتصال شبکه یا وضعیت جعلی VPN</div>
+</main>
+<script>
+  const fileInput = document.getElementById('file');
+  const nowInput = document.getElementById('now');
+  const form = document.getElementById('form');
+  const statusBox = document.getElementById('status');
+  const results = document.getElementById('results');
+  const runButton = document.getElementById('run');
+
+  function setStatus(message, type) {
+    statusBox.textContent = message;
+    statusBox.className = 'status ' + type;
+  }
+
+  function suggestedNow(csvText) {
+    const rows = csvText.split(/\r?\n/);
+    let max = null;
+    for (const row of rows) {
+      if (!row || row.startsWith('#') || row.startsWith('server_id,')) continue;
+      const timestamp = Number(row.split(',')[1]);
+      if (Number.isSafeInteger(timestamp) && timestamp >= 0 && (max === null || timestamp > max)) max = timestamp;
+    }
+    if (max !== null) nowInput.value = String(max);
+  }
+
+  fileInput.addEventListener('change', async () => {
+    if (!fileInput.files.length) return;
+    try { suggestedNow(await fileInput.files[0].text()); }
+    catch { setStatus('خواندن فایل انتخابی ممکن نشد.', 'error'); }
+  });
+
+  document.getElementById('demo').addEventListener('click', async () => {
+    try {
+      const response = await fetch('/demo.csv');
+      const text = await response.text();
+      const file = new File([text], 'demo_observations.csv', {type:'text/csv'});
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      fileInput.files = transfer.files;
+      suggestedNow(text);
+      setStatus('نمونهٔ نمایشی بارگذاری شد. این داده‌ها مصنوعی‌اند.', 'ok');
+    } catch { setStatus('بارگذاری نمونهٔ نمایشی ناموفق بود.', 'error'); }
+  });
+
+  function renderOutput(output) {
+    const lines = output.trim().split(/\r?\n/);
+    if (lines.length === 1 && lines[0].startsWith('No eligible')) {
+      document.getElementById('table').textContent = lines[0];
+      return;
+    }
+    const headers = lines[0].split(',');
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const labels = ['رتبه','شناسهٔ سرور','امتیاز','پوشش شواهد','ماسک','سرعت Mbps','تأخیر ms','قابلیت اطمینان','پایداری','موفقیت اخیر'];
+    headers.forEach((_, i) => {
+      const th = document.createElement('th');
+      th.textContent = labels[i] || headers[i];
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const line of lines.slice(1)) {
+      if (!line) continue;
+      const cells = line.split(',');
+      const tr = document.createElement('tr');
+      cells.forEach(cell => {
+        const td = document.createElement('td');
+        td.textContent = cell === '' ? '—' : cell;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    document.getElementById('table').replaceChildren(table);
+  }
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!fileInput.files.length) { setStatus('ابتدا یک فایل CSV انتخاب کنید.', 'error'); return; }
+    const now = nowInput.value;
+    const age = document.getElementById('age').value;
+    const recent = document.getElementById('recent').value;
+    if (!/^\d+$/.test(now) || !/^\d+$/.test(age) || !/^\d+$/.test(recent) || Number(age) < 1 || Number(recent) < 1 || Number(recent) > Number(age)) {
+      setStatus('NOW_MS و بازه‌ها را بررسی کنید؛ پنجرهٔ اخیر باید از حداکثر عمر بیشتر نباشد.', 'error'); return;
+    }
+    runButton.disabled = true;
+    runButton.textContent = 'در حال پردازش…';
+    results.hidden = true;
+    statusBox.className = 'status';
+    try {
+      const params = new URLSearchParams({now_ms:now, max_age_ms:age, recent_window_ms:recent});
+      const response = await fetch('/rank?' + params.toString(), {
+        method:'POST', headers:{'Content-Type':'text/csv; charset=utf-8'}, body:await fileInput.files[0].text()
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'پردازش فایل ناموفق بود.');
+      renderOutput(payload.output);
+      document.getElementById('notice').textContent = payload.notice;
+      results.hidden = false;
+      setStatus('پردازش تمام شد. هیچ probe یا بررسی شبکه‌ای اجرا نشد.', 'ok');
+    } catch (error) { setStatus(error.message || 'ارتباط با ابزار برقرار نشد.', 'error'); }
+    finally { runButton.disabled = false; runButton.textContent = 'رتبه‌بندی CSV'; }
+  });
+</script>
+</body>
+</html>
