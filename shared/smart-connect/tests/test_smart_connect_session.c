@@ -285,7 +285,20 @@ static void test_all_stale_observation_batches_exhaust_without_fake_metrics(void
 static void test_observation_batch_count_and_pointer_are_bounded(void) {
     current_test = "observation_batch_count_and_pointer_are_bounded";
     V2SSmartConnectSession session;
+    V2SProbeObservation too_many[V2S_MAX_PROBE_OBSERVATIONS + 1];
+    V2SSessionProbeBatch oversized = {"oversized", 1, too_many,
+                                      V2S_MAX_PROBE_OBSERVATIONS + 1};
+    const V2SProbeObservation fresh[] = {
+        {990, 1, V2S_METRIC_THROUGHPUT, 10.0, 0.0}
+    };
+    const V2SSessionProbeBatch duplicate_ids[] = {
+        {"duplicate", 1, fresh, 1}, {"duplicate", 1, fresh, 1}
+    };
+    size_t i;
     uint64_t generation = 0;
+    for (i = 0; i < V2S_MAX_PROBE_OBSERVATIONS + 1; i++) {
+        too_many[i] = (V2SProbeObservation){990, 1, V2S_METRIC_THROUGHPUT, 10.0, 0.0};
+    }
     CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
     CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
     CHECK(v2s_smart_session_benchmark_completed_from_observations(
@@ -298,6 +311,22 @@ static void test_observation_batch_count_and_pointer_are_bounded(void) {
     CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
     CHECK(v2s_smart_session_benchmark_completed_from_observations(
               &session, generation, NULL, 1, 1000, 100, 50, NULL) ==
+          V2S_SESSION_INVALID_MEASUREMENTS);
+    CHECK(session.connection.state == V2S_CONNECTION_ERROR);
+    CHECK(session.input_count == 0 && session.ranked_count == 0);
+
+    CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, &oversized, 1, 1000, 100, 50, NULL) ==
+          V2S_SESSION_INVALID_MEASUREMENTS);
+    CHECK(session.connection.state == V2S_CONNECTION_ERROR);
+    CHECK(session.input_count == 0 && session.ranked_count == 0);
+
+    CHECK(v2s_smart_session_init(&session, 2) == V2S_SESSION_OK);
+    CHECK(reach_benchmarking(&session, &generation) == V2S_SESSION_OK);
+    CHECK(v2s_smart_session_benchmark_completed_from_observations(
+              &session, generation, duplicate_ids, 2, 1000, 100, 50, NULL) ==
           V2S_SESSION_INVALID_MEASUREMENTS);
     CHECK(session.connection.state == V2S_CONNECTION_ERROR);
     CHECK(session.input_count == 0 && session.ranked_count == 0);
