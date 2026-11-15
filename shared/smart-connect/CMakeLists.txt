@@ -3,7 +3,7 @@ project(v2speed_smart_connect VERSION 0.1.0 LANGUAGES C)
 
 include(CTest)
 
-add_library(v2speed_smart_connect STATIC src/smart_connect.c src/connection_state.c src/fallback_planner.c src/smart_connect_session.c)
+add_library(v2speed_smart_connect STATIC src/smart_connect.c src/connection_state.c src/fallback_planner.c src/smart_connect_session.c src/smart_connect_measurements.c)
 target_include_directories(v2speed_smart_connect PUBLIC include)
 target_compile_features(v2speed_smart_connect PUBLIC c_std_11)
 
@@ -36,4 +36,11 @@ if(BUILD_TESTING)
         target_link_libraries(test_smart_connect_session PRIVATE m)
     endif()
     add_test(NAME smart_connect_session_domain COMMAND test_smart_connect_session)
+
+    add_executable(test_smart_connect_measurements tests/test_smart_connect_measurements.c)
+    target_link_libraries(test_smart_connect_measurements PRIVATE v2speed_smart_connect)
+    if(UNIX)
+        target_link_libraries(test_smart_connect_measurements PRIVATE m)
+    endif()
+    add_test(NAME smart_connect_measurements_domain COMMAND test_smart_connect_measurements)
 endif()

@@ -20,7 +20,11 @@ COMMON_FLAGS="-std=c11 -Wall -Wextra -Werror -pedantic"
   "$ROOT/src/smart_connect.c" "$ROOT/src/connection_state.c" \
   "$ROOT/src/fallback_planner.c" "$ROOT/src/smart_connect_session.c" \
   "$ROOT/tests/test_smart_connect_session.c" -lm -o "$TMP_DIR/test_smart_connect_session"
+"$CC" $COMMON_FLAGS -I "$ROOT/include" \
+  "$ROOT/src/smart_connect_measurements.c" "$ROOT/tests/test_smart_connect_measurements.c" \
+  -lm -o "$TMP_DIR/test_smart_connect_measurements"
 "$TMP_DIR/test_smart_connect"
 "$TMP_DIR/test_connection_state"
 "$TMP_DIR/test_fallback_planner"
 "$TMP_DIR/test_smart_connect_session"
+"$TMP_DIR/test_smart_connect_measurements"
