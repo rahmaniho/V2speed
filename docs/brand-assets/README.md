@@ -27,6 +27,8 @@ The two user-supplied images are preserved byte-for-byte under `source/` and are
 | `ui/v2speed-logo-512.png` | Compact UI rendering source | 512 × 341 RGBA | Full supplied artwork, proportional resize; no crop. |
 | `ui/v2speed-logo-dark-background.png` | Dark-surface preview / fallback | 1536 × 1024 RGB | Original alpha artwork composited over `#080D18`. |
 | `ui/v2speed-logo-light-background.png` | Light-surface preview | 1536 × 1024 RGB | Original alpha artwork composited over `#F8FAFC`. |
+| `ui/v2speed-app-icon-192.png` | PWA home-screen icon | 192 × 192 RGB | Proportional resize of the full supplied square app-icon artwork; no crop or distortion. |
+| `ui/v2speed-app-icon-512.png` | High-resolution PWA home-screen icon | 512 × 512 RGB | Proportional resize of the full supplied square app-icon artwork; no crop or distortion. |
 
 `python3 scripts/verify_brand_assets.py` validates required source and derivative PNG signatures, dimensions, color types, and original source byte sizes with only the Python standard library. The transparent/dark/light wordmark variants retain the supplied art; no background was keyed out and no vector trace or emblem crop was created.
 

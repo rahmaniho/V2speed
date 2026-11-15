@@ -56,6 +56,20 @@ class SubscriptionParserTests(unittest.TestCase):
             self.assertTrue(source["api_url"].startswith("https://api.github.com/repos/"))
             self.assertTrue(source["url"].startswith("https://raw.githubusercontent.com/"))
 
+    def test_pwa_manifest_uses_existing_brand_icon_derivatives(self):
+        manifest = json.loads((SERVER.WEB_ROOT / "manifest.webmanifest").read_text())
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertEqual({icon["sizes"] for icon in manifest["icons"]}, {"192x192", "512x512"})
+        for icon in manifest["icons"]:
+            filename = Path(icon["src"]).name.replace("app-icon-", "v2speed-app-icon-")
+            self.assertTrue((SERVER.ROOT / "docs" / "brand-assets" / "ui" / filename).exists())
+
+    def test_service_worker_does_not_cache_subscription_apis(self):
+        worker = (SERVER.WEB_ROOT / "sw.js").read_text()
+        self.assertIn("url.pathname.startsWith('/api/')", worker)
+        self.assertNotIn("/api/subscriptions", worker)
+        self.assertNotIn("/api/config/", worker)
+
 
 if __name__ == "__main__":
     unittest.main()

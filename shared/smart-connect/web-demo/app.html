@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#080d18">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/app-icon-192.png">
+<link rel="apple-touch-icon" href="/app-icon-192.png">
 <title>V2Speed · Smart VPN</title>
 <style>
 :root{color-scheme:dark;--bg:#080d18;--surface:#111a2b;--surface2:#18243a;--line:#26344a;--text:#f5f7fa;--muted:#9ba8ba;--green:#9fff00;--gold:#d6a443;--red:#ff9b9b;--blue:#90c7ff}
@@ -32,7 +35,7 @@
   <div class="section-title"><h2>پیکربندی‌ها</h2><span id="count" class="muted"></span></div>
   <div id="nodes" class="node-list"></div>
   <div id="showMoreWrap" class="actions" style="display:flex;justify-content:center;margin:16px 0" hidden><button id="showMore" class="button">نمایش بیشتر</button></div>
-  <div class="footer">داده‌های فهرست از مخازن زیر بارگیری می‌شوند. <a href="https://github.com/iboxz/free-v2ray-collector" target="_blank" rel="noopener noreferrer">iboxz</a> · <a href="https://github.com/ThomasJasperthecat/sub" target="_blank" rel="noopener noreferrer">ThomasJasperthecat</a> · <a href="https://github.com/youfoundamin/V2rayCollector" target="_blank" rel="noopener noreferrer">V2rayCollector</a><br>محتوا می‌تواند تغییر کند، منقضی باشد یا ناامن باشد. هیچ probe یا اتصال شبکه‌ای توسط V2Speed اجرا نمی‌شود.</div>
+  <div class="footer">داده‌های فهرست از مخازن زیر بارگیری می‌شوند. <a href="https://github.com/iboxz/free-v2ray-collector" target="_blank" rel="noopener noreferrer">iboxz</a> · <a href="https://github.com/ThomasJasperthecat/sub" target="_blank" rel="noopener noreferrer">ThomasJasperthecat</a> · <a href="https://github.com/youfoundamin/V2rayCollector" target="_blank" rel="noopener noreferrer">V2rayCollector</a><br>محتوا می‌تواند تغییر کند، منقضی باشد یا ناامن باشد. هیچ probe یا اتصال شبکه‌ای توسط V2Speed اجرا نمی‌شود.<br>در مرورگرهای پشتیبانی‌شده می‌توانید از منوی مرورگر «افزودن به صفحهٔ اصلی» را بزنید؛ این فقط نسخهٔ کاتالوگ را نصب می‌کند، نه VPN را.</div>
 </main>
 <script>
 const state={sources:[],nodes:[],limit:60};
@@ -61,6 +64,7 @@ document.getElementById('search').addEventListener('input',()=>{state.limit=60;r
 sourceFilter.addEventListener('change',()=>{state.limit=60;renderNodes();});
 protocolFilter.addEventListener('change',()=>{state.limit=60;renderNodes();});
 document.getElementById('showMore').addEventListener('click',()=>{state.limit+=60;renderNodes();});
+if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 loadSources(false);
 </script>
 </body>

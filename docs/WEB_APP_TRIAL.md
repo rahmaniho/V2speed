@@ -4,7 +4,7 @@
 
 The prototype is served at `/` by `shared/smart-connect/web-demo/server.py`. It uses the supplied V2Speed wordmark without cropping, provides Persian RTL UI, fetches the three user-specified subscription files from fixed GitHub API routes, parses supported VLESS/VMess/Trojan/Shadowsocks rows, displays endpoint and source attribution, filters the in-memory list, and returns a selected URI only when the user requests copy. The `/csv` route preserves the separate experimental observation-ranking tool.
 
-The browser client never receives full credentials for every node up front. The server holds the returned subscription data in process memory for up to five minutes and copies a selected URI only on an explicit per-node request. Uploads for the CSV tool are written to a unique temporary file and removed after ranking. No database or persistent storage was introduced.
+The browser client never receives full credentials for every node up front. The server holds the returned subscription data in process memory for up to five minutes and copies a selected URI only on an explicit per-node request. Uploads for the CSV tool are written to a unique temporary file and removed after ranking. No database or persistent storage was introduced. HTTPS deployments also register a PWA manifest and service worker using proportional 192/512 derivatives of the supplied app icon. The worker caches static app-shell assets only; `/api/` subscription and config responses are network-only and never persisted by the browser.
 
 ## Requested subscription sources
 
@@ -26,7 +26,7 @@ No license file was present at the inspected shallow snapshots of these three re
 
 ## Verification scope and remaining blockers
 
-- Seven standard-library Python parser tests cover plaintext/base64 subscriptions, SS whole-authority Base64, VMess JSON, supported schemes, and malformed/unknown inputs. Run with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s shared/smart-connect/web-demo -p 'test_*.py'`.
+- Nine standard-library Python tests cover plaintext/base64 subscriptions, SS whole-authority Base64, VMess JSON, supported schemes, malformed/unknown inputs, PWA icon mapping, and the service worker's API-cache exclusion. Run with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s shared/smart-connect/web-demo -p 'test_*.py'`.
 - Live source fetch/listing and selected-config copy endpoints were exercised against the currently accessible GitHub API snapshots in the development environment; counts at that check were 336, 17, and 591 distinct accepted rows respectively and may change on refresh.
 - Browser/API ranking smoke test, C domain tests, sanitizers, CMake/CTest, and static analysis remain separate evidence.
 - This is a browser prototype, not Android/iOS. It has no V2Ray/Xray engine, tunnel, connection state, real probe, latency or speed test, and it does not validate that a copied config works.

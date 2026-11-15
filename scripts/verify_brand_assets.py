@@ -15,6 +15,8 @@ EXPECTED = {
     "ui/v2speed-logo-512.png": ((512, 341), 6, None),
     "ui/v2speed-logo-dark-background.png": ((1536, 1024), 2, None),
     "ui/v2speed-logo-light-background.png": ((1536, 1024), 2, None),
+    "ui/v2speed-app-icon-192.png": ((192, 192), 2, None),
+    "ui/v2speed-app-icon-512.png": ((512, 512), 2, None),
 }
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 

@@ -212,6 +212,18 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/brand.png":
             content = (ROOT / "docs" / "brand-assets" / "ui" / "v2speed-logo-dark-background.png").read_bytes()
             content_type = "image/png"
+        elif path == "/app-icon-192.png":
+            content = (ROOT / "docs" / "brand-assets" / "ui" / "v2speed-app-icon-192.png").read_bytes()
+            content_type = "image/png"
+        elif path == "/app-icon-512.png":
+            content = (ROOT / "docs" / "brand-assets" / "ui" / "v2speed-app-icon-512.png").read_bytes()
+            content_type = "image/png"
+        elif path == "/manifest.webmanifest":
+            content = (WEB_ROOT / "manifest.webmanifest").read_bytes()
+            content_type = "application/manifest+json; charset=utf-8"
+        elif path == "/sw.js":
+            content = (WEB_ROOT / "sw.js").read_bytes()
+            content_type = "text/javascript; charset=utf-8"
         elif path == "/demo.csv":
             content = (SMART_CONNECT / "tests" / "fixtures" / "demo_observations.csv").read_bytes()
             content_type = "text/csv; charset=utf-8"
