@@ -23,23 +23,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: Compile and run deterministic Smart Connect tests
         run: make -C shared/smart-connect test
-      - name: Configure and build the CMake library and test executables
+      - name: Configure CMake library and test executables
         run: cmake -S shared/smart-connect -B "${{ runner.temp }}/v2speed-smart-connect-build" -DCMAKE_BUILD_TYPE=Debug
+      - name: Build the CMake targets
+        run: cmake --build "${{ runner.temp }}/v2speed-smart-connect-build" --parallel
       - name: Run CTest suite
-        shell: bash
-        run: |
-          set +e
-          ctest --test-dir "${{ runner.temp }}/v2speed-smart-connect-build" --output-on-failure --verbose >"${{ runner.temp }}/v2speed-ctest.log" 2>&1
-          result=$?
-          if [ "$result" -ne 0 ]; then
-            python3 - "${{ runner.temp }}/v2speed-ctest.log" <<'PY'
-          import sys
-          from pathlib import Path
-          lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
-          detail = " | ".join(lines[-120:])
-          escaped = detail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-          print(f"::error title=CTest failure log::{escaped[:10000]}")
-          PY
-            cat "${{ runner.temp }}/v2speed-ctest.log"
-          fi
-          exit "$result"
+        run: ctest --test-dir "${{ runner.temp }}/v2speed-smart-connect-build" --output-on-failure
