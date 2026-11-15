@@ -29,8 +29,8 @@ The two images supplied by the user are preserved as the original Lion and Sun a
 
 - Do not copy or adapt v2rayNG code before legal review: its repository is GPL-3.0. The inspected Android wrapper, Xray core, HEV tunnel and v2fly core have distinct license terms; see the report. No reference source was copied.
 - Xray-core is a candidate, not a selected or cleared production engine. iOS compatibility, transitive licenses, protocol parity and real-device performance are unverified.
-- Deterministic Smart Connect scoring, a generation-safe state reducer, a bounded ranked fallback planner, a session coordinator, timestamp-aware observation aggregation, and a bounded probe scheduling plan are implemented and tested in `shared/smart-connect/`; run `make -C shared/smart-connect test`.
-- The aggregator and scheduler operate only on caller-supplied observations/timestamps: they do not run or cancel real probes. Tunnel success still depends on a caller-reported verified outcome; real probes, tunnel establishment/verification and engine-driven fallback remain unimplemented. No ICMP-only ranking or invented metrics.
+- Deterministic Smart Connect scoring, a generation-safe state reducer, a bounded ranked fallback planner, a session coordinator, timestamp-aware observation aggregation, a bounded probe scheduling plan, and a scheduler-result-to-observation bridge are implemented and tested in `shared/smart-connect/`; run `make -C shared/smart-connect test`.
+- The bridge maps scheduler `FAILED`/`TIMED_OUT` states to failed observations with no metric mask; a `SUCCEEDED` state still requires caller-supplied measurement data. The aggregator and scheduler read no clock and perform no network I/O or task cancellation. Tunnel success still depends on a caller-reported verified outcome; real probes, tunnel establishment/verification and engine-driven fallback remain unimplemented. No ICMP-only ranking or invented metrics.
 - Local configuration management must not require a backend. No database/cache is selected.
 
 ## Tooling / verification limitations

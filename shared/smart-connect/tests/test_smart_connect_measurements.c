@@ -210,6 +210,126 @@ static void test_aggregated_observations_feed_the_ranker_without_fabricated_metr
     CHECK(ranked[1].input_index == 1);
 }
 
+static void test_timed_out_scheduler_task_becomes_failure_without_metrics(void) {
+    current_test = "timed_out_scheduler_task_becomes_failure_without_metrics";
+    V2SProbePlan plan;
+    V2SProbePlan failed_plan;
+    V2SProbeObservation observation;
+    V2SServerMeasurement measurement;
+    size_t index = 99;
+    size_t failed_index = 99;
+    size_t expired_index = 99;
+    size_t expired_count = 99;
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 10, 0, 100) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_OK && index == 0);
+    CHECK(v2s_probe_plan_expire(&plan, 11, &expired_index, 1, &expired_count) == V2S_PROBE_PLAN_OK);
+    CHECK(expired_count == 1 && expired_index == 0);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 12, NULL, &observation) ==
+          V2S_MEASUREMENT_OK);
+    CHECK(observation.timestamp_ms == 12 && observation.succeeded == 0);
+    CHECK(observation.measured_mask == 0);
+    CHECK(observation.throughput_mbps == 0.0 && observation.latency_ms == 0.0);
+    CHECK(v2s_measurement_aggregate("timed-out", 1, &observation, 1, 20, 20, 10,
+                                    &measurement) == V2S_MEASUREMENT_OK);
+    CHECK(measurement.reliability == 0.0);
+    CHECK((measurement.measured_mask & (V2S_METRIC_THROUGHPUT | V2S_METRIC_LATENCY)) == 0);
+    CHECK(v2s_probe_plan_init(&failed_plan, 1, 1, 10, 0, 100) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&failed_plan, 1, &failed_index) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_complete(&failed_plan, failed_index, 2, 0) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_measurement_observation_from_plan(&failed_plan, failed_index, 3, NULL,
+                                                &observation) == V2S_MEASUREMENT_OK);
+    CHECK(observation.timestamp_ms == 3 && observation.succeeded == 0);
+    CHECK(observation.measured_mask == 0);
+}
+
+static void test_completed_scheduler_task_conversion_preserves_only_caller_metrics(void) {
+    current_test = "completed_scheduler_task_conversion_preserves_only_caller_metrics";
+    V2SProbePlan plan;
+    V2SProbeObservation supplied = sample(2, 1, V2S_METRIC_THROUGHPUT | V2S_METRIC_LATENCY,
+                                          42.5, 18.0);
+    V2SProbeObservation observation;
+    V2SServerMeasurement measurement;
+    size_t index = 99;
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 20, 0, 100) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_complete(&plan, index, 2, 1) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_measurement_observation_from_plan(&plan, index, 3, &supplied,
+                                                &observation) == V2S_MEASUREMENT_OK);
+    CHECK(observation.timestamp_ms == 3);
+    CHECK(observation.succeeded == 1);
+    CHECK(observation.measured_mask == supplied.measured_mask);
+    CHECK(observation.throughput_mbps == 42.5 && observation.latency_ms == 18.0);
+    CHECK(v2s_measurement_aggregate("completed", 1, &observation, 1, 10, 10, 5,
+                                    &measurement) == V2S_MEASUREMENT_OK);
+    CHECK(measurement.reliability == 1.0);
+    CHECK(measurement.throughput_mbps == 42.5 && measurement.latency_ms == 18.0);
+}
+
+static void test_scheduler_states_without_completed_attempt_do_not_aggregate(void) {
+    current_test = "scheduler_states_without_completed_attempt_do_not_aggregate";
+    V2SProbePlan plan;
+    V2SProbeObservation observation;
+    size_t index = 99;
+    size_t active_index = 99;
+    size_t active_count = 99;
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 20, 0, 100) == V2S_PROBE_PLAN_OK);
+    (void)memset(&observation, 0xA5, sizeof(observation));
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 1, NULL, &observation) ==
+          V2S_MEASUREMENT_INVALID_PROBE_STATE);
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 2, NULL, &observation) ==
+          V2S_MEASUREMENT_INVALID_PROBE_STATE);
+    CHECK(v2s_probe_plan_cancel(&plan, &active_index, 1, &active_count) == V2S_PROBE_PLAN_OK);
+    CHECK(active_count == 1 && active_index == 0);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 3, NULL, &observation) ==
+          V2S_MEASUREMENT_INVALID_PROBE_STATE);
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 20, 0, 10) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_expire(&plan, 10, NULL, 0, &index) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 10, NULL, &observation) ==
+          V2S_MEASUREMENT_INVALID_PROBE_STATE);
+}
+
+static void test_scheduler_observation_conversion_errors_are_transactional(void) {
+    current_test = "scheduler_observation_conversion_errors_are_transactional";
+    V2SProbePlan plan;
+    V2SProbeObservation output;
+    V2SProbeObservation before;
+    V2SProbeObservation supplied = sample(1, 1, 0, 0, 0);
+    V2SProbeObservation marked_failed = sample(1, 0, 0, 0, 0);
+    V2SProbeObservation malformed_success = sample(1, 1, V2S_METRIC_THROUGHPUT, NAN, 0);
+    size_t index = 99;
+    (void)memset(&plan, 0, sizeof(plan));
+    (void)memset(&output, 0x5A, sizeof(output));
+    before = output;
+    CHECK(v2s_measurement_observation_from_plan(NULL, 0, 1, NULL, &output) ==
+          V2S_MEASUREMENT_INVALID_ARGUMENT);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 1, NULL, NULL) ==
+          V2S_MEASUREMENT_INVALID_ARGUMENT);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 1, NULL, &output) ==
+          V2S_MEASUREMENT_INVALID_PROBE_STATE);
+    CHECK(memcmp(&output, &before, sizeof(output)) == 0);
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 10, 0, 100) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_complete(&plan, index, 2, 0) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 3, &supplied, &output) ==
+          V2S_MEASUREMENT_INVALID_ARGUMENT);
+    CHECK(memcmp(&output, &before, sizeof(output)) == 0);
+    CHECK(v2s_probe_plan_init(&plan, 1, 1, 10, 0, 100) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_next(&plan, 1, &index) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_probe_plan_complete(&plan, index, 2, 1) == V2S_PROBE_PLAN_OK);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 3, NULL, &output) ==
+          V2S_MEASUREMENT_INVALID_ARGUMENT);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 3, &marked_failed, &output) ==
+          V2S_MEASUREMENT_INVALID_ARGUMENT);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 3, &malformed_success, &output) ==
+          V2S_MEASUREMENT_INVALID_OBSERVATION);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 0, 0, &supplied, &output) ==
+          V2S_MEASUREMENT_INVALID_ARGUMENT);
+    CHECK(v2s_measurement_observation_from_plan(&plan, 1, 3, &supplied, &output) ==
+          V2S_MEASUREMENT_INVALID_ARGUMENT);
+    CHECK(memcmp(&output, &before, sizeof(output)) == 0);
+}
+
 static void test_generated_observation_windows_preserve_ratio_and_mask_invariants(void) {
     current_test = "generated_observation_windows_preserve_ratio_and_mask_invariants";
     uint32_t iteration;
@@ -289,11 +409,15 @@ int main(void) {
     test_empty_fresh_window_and_invalid_policy_are_explicit();
     test_invalid_ids_masks_and_batch_size_are_rejected();
     test_aggregated_observations_feed_the_ranker_without_fabricated_metrics();
+    test_timed_out_scheduler_task_becomes_failure_without_metrics();
+    test_completed_scheduler_task_conversion_preserves_only_caller_metrics();
+    test_scheduler_states_without_completed_attempt_do_not_aggregate();
+    test_scheduler_observation_conversion_errors_are_transactional();
     test_generated_observation_windows_preserve_ratio_and_mask_invariants();
     if (failures != 0) {
         fprintf(stderr, "%d Smart Connect measurement test(s) failed.\n", failures);
         return 1;
     }
-    puts("10 Smart Connect measurement tests passed (including 500 generated windows).");
+    puts("14 Smart Connect measurement tests passed (including 500 generated windows).");
     return 0;
 }

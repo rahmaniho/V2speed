@@ -2,6 +2,7 @@
 #define V2SPEED_SMART_CONNECT_MEASUREMENTS_H
 
 #include "v2speed/smart_connect.h"
+#include "v2speed/smart_connect_probe_plan.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -18,7 +19,8 @@ typedef enum V2SMeasurementStatus {
     V2S_MEASUREMENT_INVALID_ARGUMENT = 1,
     V2S_MEASUREMENT_INVALID_OBSERVATION = 2,
     V2S_MEASUREMENT_TOO_MANY_OBSERVATIONS = 3,
-    V2S_MEASUREMENT_NO_FRESH_ATTEMPTS = 4
+    V2S_MEASUREMENT_NO_FRESH_ATTEMPTS = 4,
+    V2S_MEASUREMENT_INVALID_PROBE_STATE = 5
 } V2SMeasurementStatus;
 
 /* One caller-reported probe result. succeeded is the caller's probe outcome,
@@ -53,6 +55,19 @@ V2SMeasurementStatus v2s_measurement_aggregate(
     uint64_t max_age_ms,
     uint64_t recent_window_ms,
     V2SServerMeasurement *out_measurement);
+
+/* Convert a terminal scheduler result into an observation at caller-supplied
+ * monotonic timestamp. FAILED/TIMED_OUT produce a failed attempt with no metric
+ * mask. SUCCEEDED requires a caller-supplied successful observation and copies
+ * only its measurement data, replacing its timestamp. PENDING, IN_FLIGHT,
+ * NOT_STARTED and CANCELLED do not become attempts. No metric or tunnel result
+ * is independently verified. Output is unchanged on error. */
+V2SMeasurementStatus v2s_measurement_observation_from_plan(
+    const V2SProbePlan *plan,
+    size_t candidate_index,
+    uint64_t timestamp_ms,
+    const V2SProbeObservation *successful_observation,
+    V2SProbeObservation *out_observation);
 
 #ifdef __cplusplus
 }

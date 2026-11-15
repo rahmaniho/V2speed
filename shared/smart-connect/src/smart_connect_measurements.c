@@ -79,6 +79,51 @@ static double throughput_stability(const double samples[V2S_MAX_PROBE_OBSERVATIO
     }
 }
 
+V2SMeasurementStatus v2s_measurement_observation_from_plan(
+    const V2SProbePlan *plan,
+    size_t candidate_index,
+    uint64_t timestamp_ms,
+    const V2SProbeObservation *successful_observation,
+    V2SProbeObservation *out_observation) {
+    V2SProbeTaskState task_state;
+    V2SProbePlanStatus plan_status;
+    V2SProbeObservation result = {0};
+
+    if (plan == NULL || out_observation == NULL) return V2S_MEASUREMENT_INVALID_ARGUMENT;
+    plan_status = v2s_probe_plan_task_state(plan, candidate_index, &task_state);
+    if (plan_status == V2S_PROBE_PLAN_INVALID_ARGUMENT) return V2S_MEASUREMENT_INVALID_ARGUMENT;
+    if (plan_status != V2S_PROBE_PLAN_OK) return V2S_MEASUREMENT_INVALID_PROBE_STATE;
+
+    if (task_state == V2S_PROBE_TASK_SUCCEEDED) {
+        if (successful_observation == NULL || successful_observation->succeeded != 1) {
+            return V2S_MEASUREMENT_INVALID_ARGUMENT;
+        }
+        if (timestamp_ms < plan->tasks[candidate_index].started_at_ms) {
+            return V2S_MEASUREMENT_INVALID_ARGUMENT;
+        }
+        result = *successful_observation;
+        result.timestamp_ms = timestamp_ms;
+        result.succeeded = 1;
+        if (!valid_observation(&result, timestamp_ms)) {
+            return V2S_MEASUREMENT_INVALID_OBSERVATION;
+        }
+    } else if (task_state == V2S_PROBE_TASK_FAILED ||
+               task_state == V2S_PROBE_TASK_TIMED_OUT) {
+        if (successful_observation != NULL ||
+            timestamp_ms < plan->tasks[candidate_index].started_at_ms) {
+            return V2S_MEASUREMENT_INVALID_ARGUMENT;
+        }
+        result.timestamp_ms = timestamp_ms;
+        result.succeeded = 0;
+        result.measured_mask = 0;
+    } else {
+        return V2S_MEASUREMENT_INVALID_PROBE_STATE;
+    }
+
+    *out_observation = result;
+    return V2S_MEASUREMENT_OK;
+}
+
 V2SMeasurementStatus v2s_measurement_aggregate(
     const char *server_id,
     uint8_t eligible,

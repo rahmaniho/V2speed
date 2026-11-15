@@ -7,7 +7,7 @@
 - Scoring C ABI: `shared/smart-connect/include/v2speed/smart_connect.h`
 - Connection state C ABI: `shared/smart-connect/include/v2speed/connection_state.h`
 - Session coordinator C ABI: `shared/smart-connect/include/v2speed/smart_connect_session.h`
-- Measurement aggregation C ABI: `shared/smart-connect/include/v2speed/smart_connect_measurements.h`
+- Measurement aggregation and scheduler-observation bridge C ABI: `shared/smart-connect/include/v2speed/smart_connect_measurements.h`
 - Probe scheduling plan C ABI: `shared/smart-connect/include/v2speed/smart_connect_probe_plan.h`
 - Implementations: `shared/smart-connect/src/`
 - Deterministic tests: `shared/smart-connect/tests/`
@@ -42,7 +42,9 @@ The API validates the entire batch before writing output and returns `NO_FRESH_A
 
 `smart_connect_probe_plan.h/.c` is a pure dispatch-state model for up to 256 candidate probes and a caller-selected concurrency limit capped at 16. It records monotonic start times, per-probe timeouts, and a global deadline. The caller calls `expire(now_ms)` to collect timed-out in-flight indices and free slots. At the global deadline, unfinished attempts become `TIMED_OUT` and never-started candidates become `NOT_STARTED`, not failed measurements. Cancellation returns active indices so the caller can cancel owned work; the planner itself does not stop tasks. It performs no I/O or clock reads and is not thread-safe; the adapter must serialize calls and enforce the returned plan.
 
-The API distinguishes `BUSY`, `DEADLINE_REACHED`, `TIMED_OUT`, `COMPLETE`, and `CANCELLED`; boundary checks are inclusive and output buffers are transactional. When an adapter records a timeout in the observation aggregator, it must report a failed attempt with no metric mask; it must not fabricate zero throughput/latency. This verifies a bounded scheduling policy only—actual concurrent probes, cancellation propagation, and deadlines on network/core operations remain unimplemented.
+The API distinguishes `BUSY`, `DEADLINE_REACHED`, `TIMED_OUT`, `COMPLETE`, and `CANCELLED`; boundary checks are inclusive and output buffers are transactional. When an adapter records a timeout in the observation aggregator, it must report a failed attempt with no metric mask; it must not fabricate zero throughput/latency. `v2s_measurement_observation_from_plan` bridges a terminal plan task into the observation aggregator: failed/time-out tasks become unsuccessful attempts with no measured metrics, and a succeeded task requires caller-supplied observed metrics; pending, active, never-started and cancelled states are not counted as attempts. The caller supplies the timestamp and remains responsible for the authenticity of both observations and any tunnel-verification claim.
+
+This verifies a bounded scheduling policy and a domain-state-to-observation mapping only—actual concurrent probes, cancellation propagation, and deadlines on network/core operations remain unimplemented.
 
 Scorer input batches are capped at 256. IDs must be non-empty, NUL-terminated within a fixed buffer, and unique. Only fields marked measured are validated; measured numeric values must be finite and in range. The API validates the full batch before modifying result storage, uses caller-provided output capacity, and reports explicit status codes.
 
@@ -99,10 +101,10 @@ An intermediate score-test run caught a flawed test fixture: unopposed single re
 
 ### GREEN / refactor / regression
 
-- `make -C shared/smart-connect test` — **passed**: 17 scoring, 14 connection-state, 11 bounded fallback-planner, 10 session-coordinator, 10 measurement-aggregation, and 14 probe-plan tests. Generated checks cover 1,000 ranking batches, 10,000 reducer events, 250 fallback plans, 500 observation windows, and 500 generated probe schedules at varied limits, including the 256-candidate/16-concurrency maximum, plus concurrency caps, timeout/deadline boundaries, cancellation and transactional expiry results.
+- `make -C shared/smart-connect test` — **passed**: 17 scoring, 14 connection-state, 11 bounded fallback-planner, 10 session-coordinator, 14 measurement-aggregation, and 14 probe-plan tests. Generated checks cover 1,000 ranking batches, 10,000 reducer events, 250 fallback plans, 500 observation windows, and 500 generated probe schedules at varied limits, including the 256-candidate/16-concurrency maximum, plus concurrency caps, timeout/deadline boundaries, cancellation and transactional expiry results.
 - All six C test executables compiled with `-Wall -Wextra -Werror -pedantic -fsanitize=address,undefined`; all **passed** with leak detection enabled.
 - GCC `-fanalyzer` compiled all six production C sources with strict warnings — **passed**.
-- GCC/gcov measurement-aggregator coverage: **99.06% of 106 lines**, **100.00% of branches executed**, and **91.51% of branch outcomes taken at least once**.
+- GCC/gcov measurement-aggregator coverage: **99.25% of 133 lines**, **100.00% of branches executed**, and **93.18% of branch outcomes taken at least once**.
 - GCC/gcov probe-plan coverage: **97.66% of 128 lines**, **100% of branches executed**, and **83.72% of branch outcomes taken at least once**.
 - GCC/gcov session-coordinator coverage: **86.84% of lines (114 total)**, **98.06% of branches executed**, and **66.99% of branch outcomes taken at least once**. Coverage output was temporary.
 - CMake 4.4.5 configure/build and CTest — **passed** all 6 suites (scorer, connection state, fallback planner, session coordinator, observation aggregation, probe plan). CMake was installed into `/tmp` for local verification; GitHub Actions now also runs the full CMake build before CTest. No build artifacts were added to the repository.
