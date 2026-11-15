@@ -26,4 +26,21 @@ jobs:
       - name: Configure and build the CMake library and test executables
         run: cmake -S shared/smart-connect -B "${{ runner.temp }}/v2speed-smart-connect-build" -DCMAKE_BUILD_TYPE=Debug
       - name: Run CTest suite
-        run: ctest --test-dir "${{ runner.temp }}/v2speed-smart-connect-build" --output-on-failure
+        shell: bash
+        run: |
+          set +e
+          ctest --test-dir "${{ runner.temp }}/v2speed-smart-connect-build" --output-on-failure --verbose >"${{ runner.temp }}/v2speed-ctest.log" 2>&1
+          result=$?
+          if [ "$result" -ne 0 ]; then
+            python3 - "${{ runner.temp }}/v2speed-ctest.log" <<'PY'
+          import sys
+          from pathlib import Path
+          lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          selected = [line for line in lines if any(token in line.lower() for token in ("fail", "error", "not found", "no tests", "assert", "segmentation"))]
+          for line in selected[-40:]:
+              escaped = line.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+              print(f"::error title=CTest failure detail::{escaped[:900]}")
+          PY
+            cat "${{ runner.temp }}/v2speed-ctest.log"
+          fi
+          exit "$result"
