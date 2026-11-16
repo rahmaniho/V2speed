@@ -92,14 +92,15 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        brand.addView(label("به V2Speed خوش آمدید", 19f, C.WHITE, true), matchWrap())
-        brand.addView(label("امنیت، سرعت، آزادی", 13f, C.MUTED), matchWrap())
-        val crown = roundLabel("♛", 48, C.CARD, C.GOLD, 25f).apply {
-            setOnClickListener { toast("بخش ویژه هنوز فعال نشده است.") }
+        brand.addView(label("V2Speed", 19f, C.WHITE, true), matchWrap())
+        brand.addView(label("جاویدنامان وطن", 13f, C.MUTED), matchWrap())
+        val sunMark = roundLabel("☼", 48, C.CARD, C.GOLD, 25f).apply {
+            contentDescription = "تنظیمات V2Speed"
+            setOnClickListener { showTab(TAB_SETTINGS) }
         }
         header.addView(menu, LinearLayout.LayoutParams(dp(48), dp(48)))
         header.addView(brand, LinearLayout.LayoutParams(0, dp(52), 1f))
-        header.addView(crown, LinearLayout.LayoutParams(dp(48), dp(48)))
+        header.addView(sunMark, LinearLayout.LayoutParams(dp(48), dp(48)))
 
         val scroller = ScrollView(this).apply { clipToPadding = false }
         page = LinearLayout(this).apply {
@@ -216,7 +217,22 @@ class MainActivity : Activity() {
         page.addView(infoRow("پشتیبانی", "Android 10 و بالاتر"), bottomSpace(8))
         page.addView(infoRow("سرعت‌سنج", "هنوز پیاده‌سازی نشده"), bottomSpace(8))
         page.addView(infoRow("Kill Switch و آزمون DNS", "هنوز پیاده‌سازی نشده"), bottomSpace(8))
-        page.addView(infoRow("منابع سرور", "سه فهرست اشتراک ثابت در برنامه"), bottomSpace(12))
+        page.addView(infoRow("منابع سرور", "سه فهرست اشتراک ثابت در برنامه"), bottomSpace(8))
+        val voiceCard = card().apply { setPadding(dp(14), dp(12), dp(14), dp(12)) }
+        val voiceSwitch = android.widget.Switch(this).apply {
+            text = "اعلان صوتی پس از اتصال"
+            textSize = 15f
+            setTextColor(C.WHITE)
+            isChecked = getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+                .getBoolean(KEY_VOICE_ANNOUNCEMENT, true)
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit()
+                    .putBoolean(KEY_VOICE_ANNOUNCEMENT, enabled).apply()
+            }
+        }
+        voiceCard.addView(voiceSwitch)
+        voiceCard.addView(label("جملهٔ اعلام اتصال با صدای فارسیِ نصب‌شده روی گوشی پخش می‌شود؛ اگر موتور دستگاه صدای فارسی نداشته باشد، چیزی پخش نمی‌شود.", 12f, C.MUTED))
+        page.addView(voiceCard, bottomSpace(12))
         page.addView(actionButton("بارگیری دوبارهٔ سرورها") { loadFeeds() }, bottomSpace())
         page.addView(actionButton("بازگشت به خانه") { showTab(TAB_HOME) }, bottomSpace())
         page.addView(label("کیفیت و حریم خصوصی سرورهای شخص ثالث به ارائه‌دهندهٔ آن‌ها وابسته است. اطلاعات حساس اتصال را با دیگران به اشتراک نگذارید.", 13f, C.MUTED))
@@ -505,6 +521,8 @@ class MainActivity : Activity() {
     private data class Source(val id: String, val name: String, val url: String)
 
     companion object {
+        const val PREFERENCES = "v2speed_preferences"
+        const val KEY_VOICE_ANNOUNCEMENT = "voice_announcement_after_connect"
         private const val TAB_HOME = 0
         private const val TAB_SERVERS = 1
         private const val TAB_SETTINGS = 2

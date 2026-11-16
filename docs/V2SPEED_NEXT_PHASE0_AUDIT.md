@@ -6,7 +6,7 @@
 **Audited head:** `a80f29fc453b251561dc01a95dedadf9d6425b0b`
 **Scope:** repository contents, existing Android spike, portable Smart Connect domain, CI, supplied brand assets, license notices, and the product/architecture requirements supplied for V2Speed NEXT.
 
-> **Audit conclusion:** This repository is an early engineering prototype, not the requested dual-source production VPN platform. It contains a native Android VPN-service spike, a feed parser/config generator, a small portable adaptive-scoring domain, browser catalog experiments, and brand assets. It contains **no KarenSoft-operated VPN fleet, no production registry/API, no user-owned profile manager, no iOS app, no admin panel, and no backend**. A successful Android APK build proves compilation only; the tunnel has not been verified on a physical device. Phase 0 is complete as a repository audit, subject to the evidence and open questions below. No implementation code was changed during this audit.
+> **Audit conclusion:** This repository is an early engineering prototype, not the requested dual-source production VPN platform. It contains a native Android VPN-service spike, a feed parser/config generator, a small portable adaptive-scoring domain, browser catalog experiments, and brand assets. It contains **no جاویدنامان وطن-operated VPN fleet, no production registry/API, no user-owned profile manager, no iOS app, no admin panel, and no backend**. A successful Android APK build proves compilation only; the tunnel has not been verified on a physical device. Phase 0 is complete as a repository audit, subject to the evidence and open questions below. No implementation code was changed during this audit.
 
 ## 1. Audit method and boundaries
 
@@ -22,7 +22,7 @@ This is an engineering/product audit, **not** a legal opinion, a full upstream s
 | Android VPN engine | Digest-pinned AndroidLibXrayLite AAR fetched by CI/local script; typed `CoreController`/`Libv2ray` calls and a reflective callback proxy | Generated API *shape* is recorded in CI. TUN/core lifecycle, method semantics, ABIs, traffic flow and failure handling remain unverified. |
 | Connection parser | VLESS, VMess, Trojan and Shadowsocks URI/feed parsing and a narrow Xray JSON generator | Parser has tests, but no personal-profile import or persistent profile model; config compatibility with the pinned runtime has not been tested. |
 | Smart Connect | Portable C scorer, state reducer, fallback planner, session coordinator, observation aggregator, and bounded probe-plan model under `shared/smart-connect/` | Pure domain logic only. It consumes supplied observations; it does not probe, connect, check server health/capacity, switch a live tunnel, or verify outcomes. |
-| Browser/catalog prototype | Standard-library Python server and web UI that read the existing fixed public feed sources; separate experimental CSV ranker | Not a VPN client, not a KarenSoft server source, and not a production backend. CSV fixture data is synthetic. |
+| Browser/catalog prototype | Standard-library Python server and web UI that read the existing fixed public feed sources; separate experimental CSV ranker | Not a VPN client, not a جاویدنامان وطن server source, and not a production backend. CSV fixture data is synthetic. |
 | Backend / admin | No Go module, API service, schema/migrations, Redis/PostgreSQL config, container/deployment manifests, admin UI, RBAC, or operational telemetry | Absent. No operating infrastructure or server inventory is present in this checkout. |
 | iOS | Supplied App Store icon source only; no Xcode project, Swift package, Network Extension provider, app-group configuration, entitlement, signing setup or CI | Absent and blocked on Apple toolchain, entitlement, engine spike and device verification. |
 | Brand | Original Lion and Sun app icon and wordmark plus Android/iOS/UI PNG derivatives in `docs/brand-assets/` | Verifier passes. Android launcher currently contains only xxxhdpi icon files; the native home screen uses a text crown/seal rather than the supplied Lion and Sun artwork. No Vazirmatn font is tracked. |
@@ -47,7 +47,7 @@ The C library has deterministic scoring and data-contract primitives for quality
 
 ### Existing sources are not the required two source domains
 
-The Android app and web demo contain three fixed public subscription-feed URLs. They are not identified as KarenSoft-owned, leased or authorized infrastructure, and they do not expose verified health or capacity. They are also not the user's own profile store. Keep these concepts separate: **KarenSoft registry**, **local personal profiles**, and existing public-feed catalog are distinct ownership/trust domains. The current repository/user constraints say to retain only the three already specified public sources; this audit does not add any more public feed sources or make redistribution claims about the current sources.
+The Android app and web demo contain three fixed public subscription-feed URLs. They are not identified as جاویدنامان وطن-owned, leased or authorized infrastructure, and they do not expose verified health or capacity. They are also not the user's own profile store. Keep these concepts separate: **جاویدنامان وطن registry**, **local personal profiles**, and existing public-feed catalog are distinct ownership/trust domains. The current repository/user constraints say to retain only the three already specified public sources; this audit does not add any more public feed sources or make redistribution claims about the current sources.
 
 ## 4. Critical technical findings and risks
 
@@ -61,15 +61,15 @@ The Android app and web demo contain three fixed public subscription-feed URLs. 
 
 ### P0 — dual-source product is not implemented
 
-- There is no KarenSoft-owned/authorized server inventory, health agent, capacity signal, API, signature/key rotation scheme, registry client or control-plane. No managed endpoint is configured. The current public lists cannot stand in for managed service availability.
+- There is no جاویدنامان وطن-owned/authorized server inventory, health agent, capacity signal, API, signature/key rotation scheme, registry client or control-plane. No managed endpoint is configured. The current public lists cannot stand in for managed service availability.
 - There is no local personal-profile domain/repository or CRUD flow. UI selection comes from the public-feed list only. URL, QR, clipboard, manual, file, subscription import, duplicate handling, profile organization, export/backup, editing and deletion are absent.
-- There is no user-controlled `KarenSoft Only / Personal Only / Smart Hybrid` mode, no unified source-selection policy, and no source-aware failover. The pure C fallback planner does not operate a real connection and must not cause silent ownership-source changes.
+- There is no user-controlled `جاویدنامان وطن Only / Personal Only / Smart Hybrid` mode, no unified source-selection policy, and no source-aware failover. The pure C fallback planner does not operate a real connection and must not cause silent ownership-source changes.
 
 ### P0 — platform and operations missing
 
 - iOS and the `NEPacketTunnelProvider` extension do not exist. Android-only build status cannot satisfy Android+iOS acceptance.
 - No backend, admin panel, health monitoring, capacity management, operational analytics, incident management, abuse controls, RBAC/audit, cost accounting or infrastructure deployment exists.
-- No real KarenSoft server credentials, authorized infrastructure details, data-processing policy or test endpoints are in the repository. Operational features cannot be truthfully implemented/tested without authorized infrastructure and explicit operator policies. Credentials must never be pasted into source or chat; later access should use the approved secret-management path.
+- No real جاویدنامان وطن server credentials, authorized infrastructure details, data-processing policy or test endpoints are in the repository. Operational features cannot be truthfully implemented/tested without authorized infrastructure and explicit operator policies. Credentials must never be pasted into source or chat; later access should use the approved secret-management path.
 
 ### P0 — privacy and release gates
 
@@ -90,7 +90,7 @@ The Android app and web demo contain three fixed public subscription-feed URLs. 
 ### Open legal/data questions
 
 - No transitive Go module, native ABI, generated asset/data or test/runtime dependency SBOM is tracked. The wrapper's exact source-to-AAR reproducibility and corresponding-source delivery must be verified before distribution. The repo already records MPL/LGPL obligations as open and does not claim legal clearance.
-- Existing public feed repositories have unresolved redistribution/licensing provenance according to `docs/WEB_APP_TRIAL.md` and `README.md`. Fetching/attributing a URL does not grant the right to republish its content. The requested official KarenSoft registry should not be populated from these feeds unless a clear authorization/data policy separately permits it.
+- Existing public feed repositories have unresolved redistribution/licensing provenance according to `docs/WEB_APP_TRIAL.md` and `README.md`. Fetching/attributing a URL does not grant the right to republish its content. The requested official جاویدنامان وطن registry should not be populated from these feeds unless a clear authorization/data policy separately permits it.
 - Supplied brand originals are present, byte-preserved and pass the PNG verifier. Confirm usage/derivative rights and final design approval before app-store release; image presence alone is not an integration or clearance record.
 
 ## 6. Product-principle and UX gaps
@@ -100,7 +100,7 @@ The Android app and web demo contain three fixed public subscription-feed URLs. 
 | Free, no tiers/payment | No billing code found; no payment dependency | Remove/repurpose the crown “special section” affordance; keep automated checks preventing paid-upgrade UI/API from entering scope. |
 | No fake metrics | Speed values are `—`, diagnostic tiles state unavailable | Good current constraint. Connection duration, measured throughput, latency and protocol are not yet supplied from live core/runtime counters. |
 | No misleading connected status | UI distinguishes connecting/error and service reports unverified internet | Still not sufficient: `CONNECTED` is emitted from core method return without an actual verified end-to-end path. Tighten status model before calling the VPN production-usable. |
-| Source ownership clarity | Current rows display public feed/source name | No KarenSoft vs Personal identity or policy control; existing three feeds must not be relabeled as KarenSoft. |
+| Source ownership clarity | Current rows display public feed/source name | No جاویدنامان وطن vs Personal identity or policy control; existing three feeds must not be relabeled as جاویدنامان وطن. |
 | Brand | Lion/Sun originals and derivative pack exist; current screen uses a generic crown/seal | Integrate supplied mark only after design/layout review; use approved Vazirmatn or document a supported alternative. |
 | Persian RTL / English | Persian-first programmatic Views; no string-resource/localization system found | English localization, RTL/LTR audit, accessibility, TalkBack, scalable text and typography remain open. |
 | Required screens | Home/server list/settings only at a rudimentary level | Onboarding, Smart Connect modes, personal configs, server details, adaptive explanation, security, diagnostics, real stats, support and About are absent. |
@@ -125,7 +125,7 @@ No physical Android or iOS device test; no measured VPN throughput, latency, jit
 1. **Native clients:** Kotlin + Jetpack Compose with Android `VpnService`; Swift + SwiftUI and a separate Network Extension provider on iOS. Keep UI and OS lifecycle adapters native. Create explicit capability/version contracts for protocol options that differ by core/platform.
 2. **Shared domain:** retain the existing C Smart Connect primitives as a candidate shared deterministic policy module, behind stable Kotlin/Swift adapters and golden test vectors. Extend only from real measured observations; do not claim that the current scheduler or planner performs I/O. Define source ownership and connection state independently of UI.
 3. **Personal source:** local-first profile repository with typed profiles, import validation, stable IDs, encrypted secrets and OS-backed key protection. Keep secrets out of requests/logs/analytics. Build export as an explicit user action. No cloud sync by default.
-4. **KarenSoft control plane:** Go modular monolith with versioned REST endpoints, PostgreSQL for durable registry/operations data, and Redis only when measured caching/coordination needs justify it. Authenticated/authorized control plane; signed/versioned server catalogue; health/capacity eligibility and safe freshness/expiry behavior. Separate it from the VPN data plane. The repository currently has none of this.
+4. **جاویدنامان وطن control plane:** Go modular monolith with versioned REST endpoints, PostgreSQL for durable registry/operations data, and Redis only when measured caching/coordination needs justify it. Authenticated/authorized control plane; signed/versioned server catalogue; health/capacity eligibility and safe freshness/expiry behavior. Separate it from the VPN data plane. The repository currently has none of this.
 5. **Server/data plane:** only independently operated or explicitly authorized nodes. Health/capacity reports must be server-agent-authenticated and freshness-bounded. Define thresholds by measured hardware/profile, availability draining and recovery. A management API cannot create the actual VPN server capacity; operators must provision and own the data plane.
 6. **Admin/monitoring plane:** role-scoped dashboard/API, immutable security audit for sensitive operations, incident controls and cost reporting. Operational telemetry should be aggregate/minimal and must never contain traffic contents or personal profile secrets.
 7. **Connection policy:** a user-owned explicit mode setting governs source choice. Hybrid selection only chooses among sources the user permits. Explain each connection/retry/switch. Separate failover policies for managed nodes and personal profiles; no cross-owner switch unless the user explicitly enabled Hybrid.
@@ -151,12 +151,12 @@ The following files should be reconciled as part of the next documentation/relea
 
 ### Gate B — source policy and personal profiles
 
-- Specify typed domain contracts for `KarenSoft`, `Personal`, `SmartHybrid`, source ownership, connection state, protocol capabilities, error category and measured observations.
+- Specify typed domain contracts for `جاویدنامان وطن`, `Personal`, `SmartHybrid`, source ownership, connection state, protocol capabilities, error category and measured observations.
 - Implement local-only profile CRUD/import validation for user-selected formats; test malformed input, duplicate IDs, credential redaction, size bounds, encrypted persistence, migration/restore/delete and safe explicit export.
 - Add source/mode UI and source-aware retry behavior. Smart Hybrid can use only currently eligible sources and must disclose each source transition.
 - Acceptance: profile content never appears in logs, normal registry API requests or telemetry; persistence tests verify confidentiality controls and migration rollback.
 
-### Gate C — KarenSoft control/data/monitoring planes
+### Gate C — جاویدنامان وطن control/data/monitoring planes
 
 - Obtain confirmed authority and a real inventory of managed/leased servers, protocol capabilities, regions, capacity signals, monitoring agents and operator contacts. Do not substitute internet subscription feeds.
 - Produce threat model, API/auth/signature/rotation design, health freshness, capacity thresholds and incident/fair-use policies before endpoint development.
@@ -172,7 +172,7 @@ The following files should be reconciled as part of the next documentation/relea
 
 ## 11. Blockers / human or operational decisions
 
-1. Confirm the legal entity/authority that operates KarenSoft-managed servers and arrange secure, authorized infrastructure access (never share passwords/tokens in chat or commit them).
+1. Confirm the legal entity/authority that operates جاویدنامان وطن-managed servers and arrange secure, authorized infrastructure access (never share passwords/tokens in chat or commit them).
 2. Approve what “official servers” means: personally owned vs leased vs explicitly authorized, supported locations/protocols and target availability/service policy.
 3. Agree which personal configuration formats/protocols are in scope for the first import release; the current parser supports only a narrow subset and has no profile lifecycle.
 4. Obtain legal review for exact AndroidLibXrayLite/Xray distribution and the three public-feed data sources; repository license texts are not legal clearance.

@@ -9,6 +9,10 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import java.util.concurrent.Executors
 import app.v2speed.android.MainActivity
 import app.v2speed.android.data.SubscriptionParser
@@ -16,7 +20,38 @@ import app.v2speed.android.data.SubscriptionParser
 class V2SpeedVpnService : VpnService() {
     private var tunnel: ParcelFileDescriptor? = null
     private var core: XrayCoreAdapter? = null
+    private var speech: TextToSpeech? = null
+    private var speechReady = false
+    private var queuedAnnouncement: String? = null
+    private val speechLock = Any()
     private val commands = Executors.newSingleThreadExecutor { task -> Thread(task, "v2speed-vpn-lifecycle") }
+
+    override fun onCreate() {
+        super.onCreate()
+        speech = TextToSpeech(applicationContext) { result ->
+            if (result != TextToSpeech.SUCCESS) return@TextToSpeech
+            synchronized(speechLock) {
+                val engine = speech ?: return@synchronized
+                var languageResult = engine.setLanguage(Locale("fa", "IR"))
+                if (languageResult == TextToSpeech.LANG_MISSING_DATA || languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    languageResult = engine.setLanguage(Locale("fa"))
+                }
+                if (languageResult != TextToSpeech.LANG_MISSING_DATA && languageResult != TextToSpeech.LANG_NOT_SUPPORTED) {
+                    engine.setSpeechRate(0.84f)
+                    engine.setPitch(0.90f)
+                    engine.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    speechReady = true
+                    speakQueuedAnnouncementLocked()
+                }
+            }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             commands.execute { stopTunnel() }
@@ -91,6 +126,7 @@ class V2SpeedVpnService : VpnService() {
             core = engine
             engine.start(config, pfd.fd)
             publishState(STATE_CONNECTED, "تونل و هسته شروع شدند؛ دسترسی اینترنت هنوز مستقل تأیید نشده است.")
+            announceConnected()
         } catch (error: Exception) {
             closeTunnel()
             publishState(STATE_ERROR, safeMessage(error))
@@ -99,7 +135,39 @@ class V2SpeedVpnService : VpnService() {
         }
     }
 
+    private fun announceConnected() {
+        if (!getSharedPreferences(MainActivity.PREFERENCES, MODE_PRIVATE)
+                .getBoolean(MainActivity.KEY_VOICE_ANNOUNCEMENT, true)) return
+        synchronized(speechLock) {
+            queuedAnnouncement = CONNECTION_ANNOUNCEMENT
+            speakQueuedAnnouncementLocked()
+        }
+    }
+
+    private fun speakQueuedAnnouncementLocked() {
+        if (!speechReady) return
+        if (!getSharedPreferences(MainActivity.PREFERENCES, MODE_PRIVATE)
+                .getBoolean(MainActivity.KEY_VOICE_ANNOUNCEMENT, true)) {
+            queuedAnnouncement = null
+            return
+        }
+        val message = queuedAnnouncement ?: return
+        queuedAnnouncement = null
+        val parameters = Bundle().apply {
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 0.55f)
+        }
+        speech?.speak(message, TextToSpeech.QUEUE_FLUSH, parameters, "v2speed-vpn-connected")
+    }
+
+    private fun cancelAnnouncement() {
+        synchronized(speechLock) {
+            queuedAnnouncement = null
+            speech?.stop()
+        }
+    }
+
     private fun stopTunnel() {
+        cancelAnnouncement()
         runCatching { core?.stop() }
         core = null
         closeTunnel()
@@ -120,9 +188,15 @@ class V2SpeedVpnService : VpnService() {
 
     override fun onDestroy() {
         commands.shutdownNow()
+        cancelAnnouncement()
         runCatching { core?.stop() }
         core = null
         closeTunnel()
+        synchronized(speechLock) {
+            speechReady = false
+            speech?.shutdown()
+            speech = null
+        }
         super.onDestroy()
     }
 
@@ -145,6 +219,7 @@ class V2SpeedVpnService : VpnService() {
         const val STATE_CONNECTED = "connected"
         const val STATE_DISCONNECTED = "disconnected"
         const val STATE_ERROR = "error"
+        const val CONNECTION_ANNOUNCEMENT = "پاینده ایران، تا ابد جاوید شاه."
         private const val CHANNEL_ID = "v2speed-vpn"
         private const val NOTIFICATION_ID = 7201
     }
