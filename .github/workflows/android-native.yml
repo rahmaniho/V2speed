@@ -56,6 +56,24 @@ jobs:
           result=$?
           if [ "$result" -ne 0 ]; then
             echo '### Android Gradle failure excerpt' >> "$GITHUB_STEP_SUMMARY"
+            python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+          for report in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              try:
+                  suite = ElementTree.parse(report).getroot()
+              except ElementTree.ParseError:
+                  continue
+              for case in suite.findall('.//testcase'):
+                  failure = case.find('failure')
+                  if failure is None:
+                      failure = case.find('error')
+                  if failure is not None:
+                      detail = ' '.join((failure.get('message', '') + ' ' + (failure.text or '')).split())[:1200]
+                      message = f"{case.get('classname', '')}.{case.get('name', '')}: {detail}"
+                      print(f"::error title=Android unit test::{message}")
+                      print(message)
+          PY
             {
               grep -E '^(e: file:|FAILURE:)' "$RUNNER_TEMP/android-build.log" || true
               awk '/^FAILURE:/{capture=1} capture && count++ < 18 {print}' "$RUNNER_TEMP/android-build.log"
