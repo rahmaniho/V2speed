@@ -18,7 +18,7 @@
 <main>
   <header class="topbar">
     <div class="brand"><img src="/brand.png" alt="شعار V2Speed"><div><strong>V2SPEED</strong><small>Smart VPN · نسخهٔ آزمایشی</small></div></div>
-    <div class="top-actions"><a class="button" href="/csv" style="text-decoration:none">آزمایش CSV</a><button id="refresh" class="button primary">بارگیری اشتراک‌ها</button></div>
+    <div class="top-actions"><button id="installApp" class="button" type="button" hidden>نصب روی گوشی</button><a class="button" href="/csv" style="text-decoration:none">آزمایش CSV</a><button id="refresh" class="button primary">بارگیری اشتراک‌ها</button></div>
   </header>
   <section class="hero">
     <div class="hero-copy"><div class="eyebrow">اتصال هوشمند · نمونهٔ اولیه</div><h1>فهرست سرورها</h1><p>پیکربندی‌های عمومی را از سه منبع درخواستی دریافت و مرور کنید. می‌توانید پیکربندی را کپی کرده و در یک کلاینت سازگار وارد کنید.</p></div>
@@ -37,7 +37,7 @@
   <div class="section-title"><h2>پیکربندی‌ها</h2><span id="count" class="muted"></span></div>
   <div id="nodes" class="node-list"></div>
   <div id="showMoreWrap" class="actions" style="display:flex;justify-content:center;margin:16px 0" hidden><button id="showMore" class="button">نمایش بیشتر</button></div>
-  <div class="footer">داده‌های فهرست از مخازن زیر بارگیری می‌شوند. <a href="https://github.com/iboxz/free-v2ray-collector" target="_blank" rel="noopener noreferrer">iboxz</a> · <a href="https://github.com/ThomasJasperthecat/sub" target="_blank" rel="noopener noreferrer">ThomasJasperthecat</a> · <a href="https://github.com/youfoundamin/V2rayCollector" target="_blank" rel="noopener noreferrer">V2rayCollector</a><br>محتوا می‌تواند تغییر کند، منقضی باشد یا ناامن باشد. هیچ probe یا اتصال شبکه‌ای توسط V2Speed اجرا نمی‌شود.<br>در مرورگرهای پشتیبانی‌شده می‌توانید از منوی مرورگر «افزودن به صفحهٔ اصلی» را بزنید؛ این فقط نسخهٔ کاتالوگ را نصب می‌کند، نه VPN را.</div>
+  <div class="footer">داده‌های فهرست از مخازن زیر بارگیری می‌شوند. <a href="https://github.com/iboxz/free-v2ray-collector" target="_blank" rel="noopener noreferrer">iboxz</a> · <a href="https://github.com/ThomasJasperthecat/sub" target="_blank" rel="noopener noreferrer">ThomasJasperthecat</a> · <a href="https://github.com/youfoundamin/V2rayCollector" target="_blank" rel="noopener noreferrer">V2rayCollector</a><br>محتوا می‌تواند تغییر کند، منقضی باشد یا ناامن باشد. هیچ probe یا اتصال شبکه‌ای توسط V2Speed اجرا نمی‌شود.<br>در اندروید، در Chrome از منوی سه‌نقطه «نصب برنامه» یا «افزودن به صفحهٔ اصلی» را بزنید؛ این فقط میان‌بُر کاتالوگ را اضافه می‌کند، نه VPN را.</div>
 </main>
 <script>
 const state={sources:[],nodes:[],limit:60};
@@ -47,6 +47,11 @@ try{const stored=JSON.parse(localStorage.getItem(favoriteKey)||'[]');if(Array.is
 const statusEl=document.getElementById('status');
 const sourceFilter=document.getElementById('sourceFilter');
 const protocolFilter=document.getElementById('protocolFilter');
+const installButton=document.getElementById('installApp');
+let deferredInstallPrompt=null;
+window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();deferredInstallPrompt=event;installButton.hidden=false;});
+installButton.addEventListener('click',async()=>{if(!deferredInstallPrompt)return;installButton.disabled=true;try{await deferredInstallPrompt.prompt();const choice=await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;installButton.hidden=true;if(choice.outcome==='accepted')setStatus('میان‌بُر V2Speed به گوشی اضافه شد؛ این برنامه تونل VPN نیست.','ok');}catch{setStatus('نصب خودکار در دسترس نیست؛ از منوی Chrome گزینهٔ «نصب برنامه» را انتخاب کنید.','warning');}finally{installButton.disabled=false;}});
+window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;installButton.hidden=true;setStatus('کاتالوگ به گوشی اضافه شد؛ برای دریافت داده به اینترنت نیاز دارد و VPN نیست.','ok');});
 function setStatus(text,type=''){statusEl.textContent=text;statusEl.className='status'+(type?' '+type:'');statusEl.hidden=!text;}
 function create(tag,cls,text){const el=document.createElement(tag);if(cls)el.className=cls;if(text!==undefined)el.textContent=text;return el;}
 function protocolLabel(p){return p==='shadowsocks'?'Shadowsocks':p.toUpperCase();}

@@ -127,8 +127,11 @@ class SubscriptionParserTests(unittest.TestCase):
         self.assertIn("function formatAge(seconds)", page)
         self.assertIn("نسخهٔ ذخیره‌شده · ${age}", page)
         self.assertIn("منبع از نسخهٔ ذخیره‌شده است.", page)
+        self.assertIn('id="installApp"', page)
+        self.assertIn("beforeinstallprompt", page)
+        self.assertIn("«نصب برنامه»", page)
         worker = (SERVER.WEB_ROOT / "sw.js").read_text()
-        self.assertIn("v2speed-app-shell-v7", worker)
+        self.assertIn("v2speed-app-shell-v8", worker)
 
 
 if __name__ == "__main__":
