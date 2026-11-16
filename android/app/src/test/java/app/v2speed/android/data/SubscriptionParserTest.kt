@@ -69,11 +69,11 @@ class SubscriptionParserTest {
 
     @Test
     fun serviceRankingRequiresBothSiteChecksAndUsesTheirAverage() {
-        val fastest = SmartProbeCandidate("fast", "vless://fast", 90, 40, 60)
-        val second = SmartProbeCandidate("second", "vless://second", 25, 70, 70)
+        val balanced = SmartProbeCandidate("balanced", "vless://balanced", 90, 60, 60)
+        val lowAverageButSlowYoutube = SmartProbeCandidate("uneven", "vless://uneven", 25, 10, 100)
         val youtubeOnly = SmartProbeCandidate("partial", "vless://partial", 10, 20, 0)
-        val ranked = SmartServiceRanking.rank(listOf(second, youtubeOnly, fastest))
-        assertEquals(listOf("fast", "second"), ranked.map { it.nodeId })
+        val ranked = SmartServiceRanking.rank(listOf(lowAverageButSlowYoutube, youtubeOnly, balanced))
+        assertEquals(listOf("balanced", "uneven"), ranked.map { it.nodeId })
     }
 
     @Test

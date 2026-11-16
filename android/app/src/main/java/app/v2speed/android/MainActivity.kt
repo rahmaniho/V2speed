@@ -1,6 +1,5 @@
 package app.v2speed.android
 
-import android.Manifest
 import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -26,6 +25,7 @@ import app.v2speed.android.data.EndpointReachabilityProbe
 import app.v2speed.android.data.ServerNode
 import app.v2speed.android.data.SmartEndpointRanking
 import app.v2speed.android.data.SubscriptionParser
+import app.v2speed.android.vpn.SmartConnectSession
 import app.v2speed.android.vpn.V2SpeedVpnService
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
@@ -33,7 +33,7 @@ import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.Future
 
 class MainActivity : Activity() {
     private val io = Executors.newSingleThreadExecutor()
@@ -49,7 +49,11 @@ class MainActivity : Activity() {
     private var vpnState = V2SpeedVpnService.STATE_DISCONNECTED
     private var statusMessage = ""
     private var smartSelectionRunning = false
+    private var smartSelectionGeneration = 0
+    private var smartSelectionTask: Future<*>? = null
     private var pendingSmartBatch: List<EndpointMeasurement>? = null
+    private val serviceLatencies = mutableMapOf<String, Triple<Long, Long, Long>>()
+    private var visibleNodeCount = INITIAL_VISIBLE_NODES
     private var receiverRegistered = false
     private var activeTab = TAB_HOME
 
@@ -58,14 +62,31 @@ class MainActivity : Activity() {
             vpnState = intent?.getStringExtra(V2SpeedVpnService.EXTRA_STATE) ?: return
             val message = intent.getStringExtra(V2SpeedVpnService.EXTRA_MESSAGE).orEmpty()
             statusMessage = message
-            val rejectedIds = intent.getStringArrayListExtra(V2SpeedVpnService.EXTRA_REJECTED_IDS).orEmpty().toSet()
-            if (rejectedIds.isNotEmpty()) {
-                nodes.removeAll { it.id in rejectedIds }
-                renderNodes()
+            if (intent.getBooleanExtra(V2SpeedVpnService.EXTRA_PROBE_COMPLETE, false)) {
+                val rankedIds = intent.getStringArrayListExtra(V2SpeedVpnService.EXTRA_RANKED_NODE_IDS).orEmpty()
+                val instagram = intent.getLongArrayExtra(V2SpeedVpnService.EXTRA_INSTAGRAM_RTT) ?: longArrayOf()
+                val youtube = intent.getLongArrayExtra(V2SpeedVpnService.EXTRA_YOUTUBE_RTT) ?: longArrayOf()
+                val endpoints = intent.getLongArrayExtra(V2SpeedVpnService.EXTRA_ENDPOINT_RTT) ?: longArrayOf()
+                val originalNodes = nodes.associateBy { it.id }
+                nodes.clear()
+                serviceLatencies.clear()
+                rankedIds.forEachIndexed { index, id ->
+                    originalNodes[id]?.let { node ->
+                        nodes += node
+                        if (index < instagram.size && index < youtube.size && index < endpoints.size) {
+                            serviceLatencies[id] = Triple(instagram[index], youtube[index], endpoints[index])
+                        }
+                    }
+                }
+                visibleNodeCount = INITIAL_VISIBLE_NODES
             }
-            intent.getStringExtra(V2SpeedVpnService.EXTRA_NODE_ID)?.let { id ->
-                selected = nodes.firstOrNull { it.id == id }
+            val selectedId = intent.getStringExtra(V2SpeedVpnService.EXTRA_NODE_ID)
+            if (intent.getBooleanExtra(V2SpeedVpnService.EXTRA_PROBE_COMPLETE, false)) {
+                selected = selectedId?.let { id -> nodes.firstOrNull { it.id == id } }
+            } else {
+                selectedId?.let { id -> selected = nodes.firstOrNull { it.id == id } }
             }
+            renderNodes()
             if (::serverSummary.isInitialized) {
                 serverSummary.text = selected?.let {
                     "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}\nمنبع عمومی: ${it.sourceName}"
@@ -231,12 +252,9 @@ class MainActivity : Activity() {
     private fun renderServersPage() {
         page.addView(label("سرورها", 23f, C.WHITE, true), bottomSpace(6))
         page.addView(label("اتصال هوشمند، کانفیگ‌ها را بررسی می‌کند؛ منابع فعلی سه فهرست عمومی‌اند، نه سرور رسمی V2Speed.", 13f, C.MUTED), bottomSpace(12))
-        val connectActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        connectActions.addView(actionButton("اتصال هوشمند") { beginSmartConnect() }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        connectActions.addView(actionButton("اتصال دستی") { connectSelectedManually() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(connectActions, bottomSpace(8))
+            addView(actionButton("آزمون همه و اتصال بهترین سرور") { beginSmartConnect() }, bottomSpace(8))
             addView(actionButton("تازه‌سازی سه فهرست عمومی") { loadFeeds() }, LinearLayout.LayoutParams(-1, dp(46)))
         }
         page.addView(actions, bottomSpace())
@@ -343,7 +361,7 @@ class MainActivity : Activity() {
             })
             return
         }
-        nodes.forEach { node ->
+        nodes.take(visibleNodeCount).forEach { node ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -360,9 +378,18 @@ class MainActivity : Activity() {
             val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             info.addView(label(node.name, 14f, C.WHITE, true))
             info.addView(label("${node.endpoint}  ·  ${node.protocol.uppercase()}  ·  ${node.sourceName}", 11f, C.MUTED))
+            serviceLatencies[node.id]?.let { (instagramMs, youtubeMs, endpointMs) ->
+                info.addView(label("Instagram ${instagramMs} ms  ·  YouTube ${youtubeMs} ms  ·  TCP ${endpointMs} ms", 11f, C.GREEN))
+            }
             row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(label(if (selected?.id == node.id) "✓ انتخاب‌شده" else "انتخاب", 12f, C.GREEN, true))
             serverList.addView(row, bottomSpace(7))
+        }
+        if (visibleNodeCount < nodes.size) {
+            serverList.addView(actionButton("نمایش ${minOf(INITIAL_VISIBLE_NODES, nodes.size - visibleNodeCount)} سرور بعدی از ${nodes.size}") {
+                visibleNodeCount = (visibleNodeCount + INITIAL_VISIBLE_NODES).coerceAtMost(nodes.size)
+                renderNodes()
+            }, bottomSpace(12))
         }
     }
 
@@ -387,7 +414,8 @@ class MainActivity : Activity() {
         val connected = isConnected()
         statusLabel.text = when (vpnState) {
             V2SpeedVpnService.STATE_CONNECTED -> "هستهٔ VPN فعال است"
-            V2SpeedVpnService.STATE_CONNECTING -> "در حال اتصال…"
+            V2SpeedVpnService.STATE_TESTING -> "در حال آزمون همهٔ کانفیگ‌ها…"
+            V2SpeedVpnService.STATE_CONNECTING -> "آزمون‌ها کامل شد؛ در حال اتصال…"
             V2SpeedVpnService.STATE_ERROR -> "اتصال برقرار نشد"
             else -> "آمادهٔ اتصال"
         }
@@ -395,7 +423,8 @@ class MainActivity : Activity() {
         if (::connectionDetail.isInitialized) {
             connectionDetail.text = when (vpnState) {
                 V2SpeedVpnService.STATE_CONNECTED -> statusMessage.ifBlank { "تونل شروع شده؛ دسترسی اینترنت مستقل بررسی نشده است." }
-                V2SpeedVpnService.STATE_CONNECTING -> "در حال برقراری تونل…"
+                V2SpeedVpnService.STATE_TESTING -> statusMessage.ifBlank { "آزمون تمام کانفیگ‌های پاسخ‌گو در حال اجراست…" }
+                V2SpeedVpnService.STATE_CONNECTING -> statusMessage.ifBlank { "آزمون‌ها کامل شد؛ در حال برقراری تونل…" }
                 V2SpeedVpnService.STATE_ERROR -> statusMessage.ifBlank { "پیکربندی یا دسترسی شبکه را بررسی کنید." }
                 else -> selected?.let { "${it.name} · ${it.sourceName}" } ?: "یک سرور از فهرست انتخاب کنید"
             }
@@ -405,12 +434,22 @@ class MainActivity : Activity() {
         powerButton.setBackgroundDrawable(rounded(C.CARD, if (connected) C.GREEN else C.GOLD_DARK, 100, dp(2)))
     }
 
-    private fun isConnected(): Boolean = vpnState == V2SpeedVpnService.STATE_CONNECTED || vpnState == V2SpeedVpnService.STATE_CONNECTING
+    private fun isConnected(): Boolean = vpnState == V2SpeedVpnService.STATE_CONNECTED ||
+        vpnState == V2SpeedVpnService.STATE_CONNECTING || vpnState == V2SpeedVpnService.STATE_TESTING
 
     private fun onPowerClicked() {
         if (isConnected() || smartSelectionRunning) {
             if (smartSelectionRunning) {
                 smartSelectionRunning = false
+                smartSelectionGeneration++
+                smartSelectionTask?.cancel(true)
+                smartSelectionTask = null
+                nodes.clear()
+                serviceLatencies.clear()
+                selected = null
+                visibleNodeCount = INITIAL_VISIBLE_NODES
+                renderNodes()
+                if (::serverSummary.isInitialized) serverSummary.text = "آزمون لغو شد؛ سروری تأیید نشده است."
                 powerButton.isEnabled = true
             }
             startService(Intent(this, V2SpeedVpnService::class.java).setAction(V2SpeedVpnService.ACTION_STOP))
@@ -423,69 +462,63 @@ class MainActivity : Activity() {
         beginSmartConnect()
     }
 
-    private fun connectSelectedManually() {
-        val node = selected
-        if (node == null) {
-            toast("برای اتصال دستی ابتدا یک کانفیگ انتخاب کنید.")
-            return
-        }
-        pendingSmartBatch = null
-        val permission = VpnService.prepare(this)
-        if (permission != null) startActivityForResult(permission, VPN_PERMISSION_REQUEST) else startVpn(node)
-    }
-
     private fun beginSmartConnect() {
         if (isConnected() || smartSelectionRunning || !::powerButton.isInitialized) return
         smartSelectionRunning = true
-        powerButton.isEnabled = false
+        val generation = ++smartSelectionGeneration
+        powerButton.text = "×"
         statusLabel.text = "در حال دریافت و اعتبارسنجی کانفیگ‌ها…"
-        connectionDetail.text = "فقط سه فهرست عمومی بررسی می‌شوند؛ حداکثر ۸ کانفیگ از هر منبع برای پیش‌آزمون نمونه‌برداری می‌شود."
+        connectionDetail.text = "تمام کانفیگ‌های قابل‌خواندن از سه فهرست عمومی بررسی می‌شوند؛ پیش‌آزمون TCP برای هر مورد اجرا می‌شود."
         statusLabel.setTextColor(C.GREEN)
-        io.execute {
+        smartSelectionTask = io.submit {
             val fetched = mutableListOf<ServerNode>()
             val unavailableSources = mutableListOf<String>()
             for (source in SOURCES) {
+                if (Thread.currentThread().isInterrupted) return@submit
                 try {
                     val body = downloadText(source.url)
-                    fetched += SubscriptionParser.parseFeed(source.id, source.name, body).take(MAX_NODES_PER_SOURCE)
+                    fetched += SubscriptionParser.parseFeed(source.id, source.name, body)
                 } catch (_: Exception) {
                     unavailableSources += source.name
                 }
             }
+            if (Thread.currentThread().isInterrupted) return@submit
             val configValid = fetched.filter { node ->
                 runCatching { SubscriptionParser.toXrayConfig(node.uri) }.isSuccess
             }
-            val scanCandidates = configValid
-                .groupBy { it.sourceId }
-                .values
-                .flatMap { it.take(MAX_ENDPOINT_PROBES_PER_SOURCE) }
-                .distinctBy { it.uri.substringBefore('#') }
+            val scanCandidates = configValid.distinctBy { it.uri.substringBefore('#') }
             val measurements = probeEndpoints(scanCandidates)
-            val ranked = SmartEndpointRanking.rank(measurements, MAX_SMART_CANDIDATES)
+            val ranked = SmartEndpointRanking.rank(measurements, measurements.size)
+            if (Thread.currentThread().isInterrupted) return@submit
             runOnUiThread {
+                if (generation != smartSelectionGeneration) return@runOnUiThread
+                smartSelectionTask = null
                 smartSelectionRunning = false
                 powerButton.isEnabled = true
                 nodes.clear()
                 nodes += ranked.map { it.node }
+                serviceLatencies.clear()
+                visibleNodeCount = INITIAL_VISIBLE_NODES
                 selected = null
                 renderNodes()
                 if (::serverSummary.isInitialized) {
                     serverSummary.text = if (ranked.isEmpty()) {
                         "کانفیگ قابل‌آزمونی پیدا نشد\nفهرست‌های عمومی را تازه‌سازی کنید"
                     } else {
-                        "${ranked.size} کانفیگ برای آزمون عمیق آماده است\nسریع‌ترین اتصال TCP: ${ranked.first().latencyMs} ms\nبر پایهٔ پینگ سرور، نه سرعت برنامه‌ها"
+                        "${ranked.size} کانفیگ از ${fetched.size} موردِ قابل‌ساخت، در آزمون TCP پاسخ داد\nهمهٔ این موارد پیش از اتصال، جداگانه برای Instagram و YouTube آزموده می‌شوند"
                     }
                 }
                 if (ranked.isEmpty()) {
                     statusLabel.text = "کانفیگ قابل‌دسترسی پیدا نشد"
-                    connectionDetail.text = "${fetched.size - configValid.size} پیکربندی قابل‌ساخت نبود؛ از ${scanCandidates.size} نمونهٔ TCP، ${scanCandidates.size - measurements.size} سرور پاسخ نداد."
+                    connectionDetail.text = "${fetched.size - configValid.size} پیکربندی قابل‌ساخت نبود؛ از ${scanCandidates.size} کانفیگ، ${scanCandidates.size - measurements.size} سرور در آزمون TCP پاسخ نداد."
                     statusLabel.setTextColor(C.RED)
                     toast("اتصال انجام نشد؛ کانفیگ نامعتبر یا سرورهای در دسترس وجود ندارد.")
                     return@runOnUiThread
                 }
                 val unavailableText = if (unavailableSources.isEmpty()) "" else " · بعضی فهرست‌ها در دسترس نبودند"
-                statusLabel.text = "در حال آزمون Instagram و YouTube…"
-                connectionDetail.text = "${ranked.size} گزینه بر اساس پینگ TCP مرتب شد؛ پینگ به‌تنهایی کیفیت یا دسترسی اپ‌ها را ثابت نمی‌کند$unavailableText"
+                statusLabel.text = "در حال آزمون همهٔ سرورهای پاسخ‌گو…"
+                connectionDetail.text = "${ranked.size} کانفیگ از ${scanCandidates.size} کانفیگ اشتراک، در حال آزمون HTTPS هر دو سرویس است؛ تا پایان بررسی همه، اتصالی آغاز نمی‌شود$unavailableText"
+                renderNodes()
                 val permission = VpnService.prepare(this)
                 if (permission != null) {
                     pendingSmartBatch = ranked
@@ -502,8 +535,7 @@ class MainActivity : Activity() {
         val executor = Executors.newFixedThreadPool(6)
         return try {
             val tasks = candidates.map { node -> Callable { EndpointReachabilityProbe.measure(node) } }
-            executor.invokeAll(tasks, ENDPOINT_PROBE_DEADLINE_SECONDS, TimeUnit.SECONDS)
-                .filterNot { it.isCancelled }
+            executor.invokeAll(tasks)
                 .mapNotNull { future -> runCatching { future.get() }.getOrNull() }
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -516,19 +548,24 @@ class MainActivity : Activity() {
     private fun startSmartVpn(batch: List<EndpointMeasurement>) {
         if (batch.isEmpty()) return
         pendingSmartBatch = null
-        vpnState = V2SpeedVpnService.STATE_CONNECTING
-        statusMessage = "در حال آزمون واقعی HTTPS از مسیر Xray برای Instagram و YouTube…"
+        vpnState = V2SpeedVpnService.STATE_TESTING
+        statusMessage = "در حال آزمون واقعی HTTPS از مسیر Xray برای همهٔ کانفیگ‌ها…"
         updateConnectionUi()
-        statusLabel.text = "در حال آزمون اتصال هوشمند…"
+        statusLabel.text = "در حال آزمون همهٔ کانفیگ‌ها…"
         connectionDetail.text = "پروب‌ها فقط وضعیت دسترسی و زمان پاسخ HTTPS را می‌سنجند؛ سرعت و پایداری استریم را تضمین نمی‌کنند."
+        val sessionId = SmartConnectSession.stage(batch.map {
+            SmartConnectSession.Candidate(it.node.id, it.node.uri, it.latencyMs)
+        })
         val intent = Intent(this, V2SpeedVpnService::class.java)
-            .putStringArrayListExtra(V2SpeedVpnService.EXTRA_SMART_URIS, ArrayList(batch.map { it.node.uri }))
-            .putStringArrayListExtra(V2SpeedVpnService.EXTRA_SMART_IDS, ArrayList(batch.map { it.node.id }))
-            .putExtra(V2SpeedVpnService.EXTRA_ENDPOINT_RTT, batch.map { it.latencyMs }.toLongArray())
+            .putExtra(V2SpeedVpnService.EXTRA_SMART_SESSION_ID, sessionId)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
     }
 
     private fun loadFeeds() {
+        if (smartSelectionRunning || isConnected()) {
+            toast("هنگام آزمون یا اتصال، فهرست را نمی‌توان جایگزین کرد.")
+            return
+        }
         if (::statusLabel.isInitialized && activeTab == TAB_HOME) statusLabel.text = "در حال دریافت فهرست سرورها…"
         if (::serverList.isInitialized) {
             serverList.removeAllViews()
@@ -540,7 +577,7 @@ class MainActivity : Activity() {
             for (source in SOURCES) {
                 try {
                     val response = downloadText(source.url)
-                    loaded += SubscriptionParser.parseFeed(source.id, source.name, response).take(MAX_NODES_PER_SOURCE)
+                    loaded += SubscriptionParser.parseFeed(source.id, source.name, response)
                 } catch (_: Exception) {
                     failures += source.name
                 }
@@ -548,6 +585,8 @@ class MainActivity : Activity() {
             runOnUiThread {
                 nodes.clear()
                 nodes += loaded
+                serviceLatencies.clear()
+                visibleNodeCount = INITIAL_VISIBLE_NODES
                 if (selected != null && nodes.none { it.id == selected?.id }) selected = null
                 renderNodes()
                 if (::serverSummary.isInitialized) {
@@ -566,18 +605,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startVpn(node: ServerNode) {
-        pendingSmartBatch = null
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_REQUEST)
-        }
-        vpnState = V2SpeedVpnService.STATE_CONNECTING
-        updateConnectionUi()
-        statusLabel.text = "در حال راه‌اندازی تونل برای ${node.name}…"
-        val intent = Intent(this, V2SpeedVpnService::class.java).putExtra(V2SpeedVpnService.EXTRA_URI, node.uri)
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
-    }
-
     @Deprecated("Android VPN consent result API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -585,8 +612,6 @@ class MainActivity : Activity() {
         val smartBatch = pendingSmartBatch
         if (resultCode == RESULT_OK && smartBatch != null) {
             startSmartVpn(smartBatch)
-        } else if (resultCode == RESULT_OK && selected != null) {
-            startVpn(selected!!)
         } else {
             pendingSmartBatch = null
             vpnState = V2SpeedVpnService.STATE_DISCONNECTED
@@ -702,12 +727,8 @@ class MainActivity : Activity() {
         private const val TAB_SERVERS = 1
         private const val TAB_SETTINGS = 2
         private const val VPN_PERMISSION_REQUEST = 801
-        private const val NOTIFICATION_REQUEST = 802
         private const val MAX_FEED_BYTES = 1_000_000
-        private const val MAX_NODES_PER_SOURCE = 250
-        private const val MAX_ENDPOINT_PROBES_PER_SOURCE = 8
-        private const val MAX_SMART_CANDIDATES = 5
-        private const val ENDPOINT_PROBE_DEADLINE_SECONDS = 12L
+        private const val INITIAL_VISIBLE_NODES = 50
         private val SOURCES = listOf(
             Source("iboxz", "Free V2ray Collector · Mix", "https://raw.githubusercontent.com/iboxz/free-v2ray-collector/main/main/mix"),
             Source("thomas", "ThomasJasperthecat · Sublist 1", "https://raw.githubusercontent.com/ThomasJasperthecat/sub/main/sublist1.txt"),
