@@ -12,9 +12,18 @@ import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
+import java.net.Socket
 import java.util.Locale
+import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import app.v2speed.android.MainActivity
+import app.v2speed.android.data.SmartProbeCandidate
+import app.v2speed.android.data.SmartServiceRanking
 import app.v2speed.android.data.SubscriptionParser
 
 class V2SpeedVpnService : VpnService() {
@@ -24,6 +33,7 @@ class V2SpeedVpnService : VpnService() {
     private var speechReady = false
     private var queuedAnnouncement: String? = null
     private val speechLock = Any()
+    private val stopRequested = AtomicBoolean(false)
     private val commands = Executors.newSingleThreadExecutor { task -> Thread(task, "v2speed-vpn-lifecycle") }
 
     override fun onCreate() {
@@ -54,7 +64,23 @@ class V2SpeedVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            stopRequested.set(true)
             commands.execute { stopTunnel() }
+            return START_NOT_STICKY
+        }
+        stopRequested.set(false)
+        val smartUris = intent?.getStringArrayListExtra(EXTRA_SMART_URIS)
+        if (!smartUris.isNullOrEmpty()) {
+            val ids = intent.getStringArrayListExtra(EXTRA_SMART_IDS).orEmpty()
+            val endpointRtts = intent.getLongArrayExtra(EXTRA_ENDPOINT_RTT) ?: longArrayOf()
+            if (smartUris.size != ids.size || smartUris.size != endpointRtts.size) {
+                publishState(STATE_ERROR, "فهرست آزمون هوشمند ناقص است.")
+                stopSelf(startId)
+                return START_NOT_STICKY
+            }
+            startAsForeground()
+            publishState(STATE_CONNECTING, "در حال آزمون امن و محدود چند کانفیگ…")
+            commands.execute { startSmartTunnel(smartUris, ids, endpointRtts, startId) }
             return START_NOT_STICKY
         }
         val uri = intent?.getStringExtra(EXTRA_URI)
@@ -108,9 +134,92 @@ class V2SpeedVpnService : VpnService() {
     }
 
     private fun startTunnel(uri: String, startId: Int) {
-        try {
+        val failure = establishTunnel(uri)
+        if (failure == null) {
+            publishState(STATE_CONNECTED, "هستهٔ VPN فعال شد؛ مسیر TUN هنوز مستقل تأیید نشده است.")
+            announceConnected()
+        } else {
+            publishState(STATE_ERROR, failure)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
+        }
+    }
+
+    private fun startSmartTunnel(uris: List<String>, ids: List<String>, endpointRtts: LongArray, startId: Int) {
+        val passing = mutableListOf<SmartProbeCandidate>()
+        val rejectedIds = linkedSetOf<String>()
+
+        uris.forEachIndexed { index, uri ->
+            if (stopRequested.get()) return
+            val nodeId = ids[index]
+            val probePort = runCatching { allocateLoopbackPort() }.getOrNull()
+            if (probePort == null) {
+                rejectedIds += nodeId
+                return@forEachIndexed
+            }
+            val probeCore = XrayCoreAdapter { }
+            try {
+                val probeConfig = SubscriptionParser.toXrayConfig(
+                    uriText = uri,
+                    includeTun = false,
+                    socksProbePort = probePort
+                )
+                probeCore.start(probeConfig, 0)
+                if (!waitForProbeListener(probePort)) {
+                    rejectedIds += nodeId
+                    return@forEachIndexed
+                }
+                val (instagram, youtube) = probeServices(probePort)
+                if (instagram == null || youtube == null) {
+                    rejectedIds += nodeId
+                } else {
+                    passing += SmartProbeCandidate(
+                        nodeId = nodeId,
+                        uri = uri,
+                        endpointLatencyMs = endpointRtts[index],
+                        instagramLatencyMs = instagram.latencyMs,
+                        youtubeLatencyMs = youtube.latencyMs
+                    )
+                }
+            } catch (_: Exception) {
+                // Credentials/config details are intentionally not copied to logs or user-visible diagnostics.
+                rejectedIds += nodeId
+            } finally {
+                runCatching { probeCore.stop() }
+            }
+        }
+        if (stopRequested.get()) return
+
+        val ranked = SmartServiceRanking.rank(passing)
+        var lastFailure: String? = null
+        for (candidate in ranked) {
+            if (stopRequested.get()) return
+            lastFailure = establishTunnel(candidate.uri)
+            if (lastFailure == null) {
+                val message = "آزمون HTTPS سبک موفق: Instagram ${candidate.instagramLatencyMs} ms، YouTube ${candidate.youtubeLatencyMs} ms؛ پینگ TCP سرور ${candidate.endpointLatencyMs} ms. سرعت و پایداری استریم تضمین نمی‌شود و مسیر TUN مستقل تأیید نشده است."
+                publishState(STATE_CONNECTED, message, candidate.nodeId, rejectedIds.toList())
+                announceConnected()
+                return
+            }
+            rejectedIds += candidate.nodeId
+        }
+
+        val message = if (passing.isEmpty()) {
+            "هیچ کانفیگی نتوانست آزمون HTTPS هر دو سرویس را از مسیر Xray کامل کند. هیچ کانفیگی انتخاب نشد."
+        } else {
+            "کانفیگ‌های آزموده‌شده نتوانستند تونل Android را شروع کنند. ${lastFailure.orEmpty()}"
+        }
+        publishState(STATE_ERROR, message, rejectedIds = rejectedIds.toList())
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf(startId)
+    }
+
+    private fun establishTunnel(uri: String): String? {
+        var pfd: ParcelFileDescriptor? = null
+        var engine: XrayCoreAdapter? = null
+        return try {
             val config = SubscriptionParser.toXrayConfig(uri)
-            val pfd = Builder()
+            pfd = Builder()
                 .setSession("V2Speed")
                 .setMtu(1500)
                 .addAddress("10.88.0.1", 30)
@@ -121,17 +230,44 @@ class V2SpeedVpnService : VpnService() {
                 .addDnsServer("2606:4700:4700::1111")
                 .addDisallowedApplication(packageName)
                 .establish() ?: error("Android اجازهٔ ساخت VPN را نداد.")
-            tunnel = pfd
-            val engine = XrayCoreAdapter { }
-            core = engine
+            engine = XrayCoreAdapter { }
             engine.start(config, pfd.fd)
-            publishState(STATE_CONNECTED, "تونل و هسته شروع شدند؛ دسترسی اینترنت هنوز مستقل تأیید نشده است.")
-            announceConnected()
+            tunnel = pfd
+            core = engine
+            null
         } catch (error: Exception) {
-            closeTunnel()
-            publishState(STATE_ERROR, safeMessage(error))
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf(startId)
+            runCatching { engine?.stop() }
+            runCatching { pfd?.close() }
+            safeMessage(error)
+        }
+    }
+
+    private fun allocateLoopbackPort(): Int = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+
+    private fun waitForProbeListener(port: Int): Boolean {
+        val deadline = System.nanoTime() + PROBE_LISTENER_TIMEOUT_MS * 1_000_000L
+        while (!stopRequested.get() && System.nanoTime() < deadline) {
+            try {
+                Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 250) }
+                return true
+            } catch (_: Exception) {
+                Thread.sleep(PROBE_LISTENER_RETRY_MS)
+            }
+        }
+        return false
+    }
+
+    private fun probeServices(port: Int): Pair<ServiceEndpointProbe.Result?, ServiceEndpointProbe.Result?> {
+        val executor = Executors.newFixedThreadPool(2)
+        return try {
+            val instagram = executor.submit(Callable { ServiceEndpointProbe.instagram(port) })
+            val youtube = executor.submit(Callable { ServiceEndpointProbe.youtube(port) })
+            instagram.get(SERVICE_PROBE_DEADLINE_SECONDS, TimeUnit.SECONDS) to
+                youtube.get(SERVICE_PROBE_DEADLINE_SECONDS, TimeUnit.SECONDS)
+        } catch (_: Exception) {
+            null to null
+        } finally {
+            executor.shutdownNow()
         }
     }
 
@@ -167,6 +303,7 @@ class V2SpeedVpnService : VpnService() {
     }
 
     private fun stopTunnel() {
+        stopRequested.set(true)
         cancelAnnouncement()
         runCatching { core?.stop() }
         core = null
@@ -182,11 +319,13 @@ class V2SpeedVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        stopRequested.set(true)
         commands.execute { stopTunnel() }
         super.onRevoke()
     }
 
     override fun onDestroy() {
+        stopRequested.set(true)
         commands.shutdownNow()
         cancelAnnouncement()
         runCatching { core?.stop() }
@@ -200,8 +339,21 @@ class V2SpeedVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun publishState(state: String, message: String) {
-        sendBroadcast(Intent(ACTION_STATE).setPackage(packageName).putExtra(EXTRA_STATE, state).putExtra(EXTRA_MESSAGE, message))
+    private fun publishState(
+        state: String,
+        message: String,
+        nodeId: String? = null,
+        rejectedIds: List<String> = emptyList()
+    ) {
+        val broadcast = Intent(ACTION_STATE)
+            .setPackage(packageName)
+            .putExtra(EXTRA_STATE, state)
+            .putExtra(EXTRA_MESSAGE, message)
+        nodeId?.let { broadcast.putExtra(EXTRA_NODE_ID, it) }
+        if (rejectedIds.isNotEmpty()) {
+            broadcast.putStringArrayListExtra(EXTRA_REJECTED_IDS, ArrayList(rejectedIds))
+        }
+        sendBroadcast(broadcast)
     }
 
     private fun safeMessage(error: Exception): String = when (error) {
@@ -213,6 +365,11 @@ class V2SpeedVpnService : VpnService() {
         const val ACTION_STATE = "app.v2speed.android.VPN_STATE"
         const val ACTION_STOP = "app.v2speed.android.STOP_VPN"
         const val EXTRA_URI = "node_uri"
+        const val EXTRA_SMART_URIS = "smart_node_uris"
+        const val EXTRA_SMART_IDS = "smart_node_ids"
+        const val EXTRA_ENDPOINT_RTT = "smart_endpoint_rtts"
+        const val EXTRA_NODE_ID = "selected_node_id"
+        const val EXTRA_REJECTED_IDS = "rejected_node_ids"
         const val EXTRA_STATE = "vpn_state"
         const val EXTRA_MESSAGE = "vpn_message"
         const val STATE_CONNECTING = "connecting"
@@ -222,5 +379,8 @@ class V2SpeedVpnService : VpnService() {
         const val CONNECTION_ANNOUNCEMENT = "پاینده ایران، تا ابد جاوید شاه."
         private const val CHANNEL_ID = "v2speed-vpn"
         private const val NOTIFICATION_ID = 7201
+        private const val PROBE_LISTENER_TIMEOUT_MS = 2_000L
+        private const val PROBE_LISTENER_RETRY_MS = 100L
+        private const val SERVICE_PROBE_DEADLINE_SECONDS = 5L
     }
 }

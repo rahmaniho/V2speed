@@ -21,14 +21,19 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import app.v2speed.android.data.EndpointMeasurement
+import app.v2speed.android.data.EndpointReachabilityProbe
 import app.v2speed.android.data.ServerNode
+import app.v2speed.android.data.SmartEndpointRanking
 import app.v2speed.android.data.SubscriptionParser
 import app.v2speed.android.vpn.V2SpeedVpnService
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
     private val io = Executors.newSingleThreadExecutor()
@@ -43,6 +48,8 @@ class MainActivity : Activity() {
     private lateinit var bottomNav: LinearLayout
     private var vpnState = V2SpeedVpnService.STATE_DISCONNECTED
     private var statusMessage = ""
+    private var smartSelectionRunning = false
+    private var pendingSmartBatch: List<EndpointMeasurement>? = null
     private var receiverRegistered = false
     private var activeTab = TAB_HOME
 
@@ -51,6 +58,19 @@ class MainActivity : Activity() {
             vpnState = intent?.getStringExtra(V2SpeedVpnService.EXTRA_STATE) ?: return
             val message = intent.getStringExtra(V2SpeedVpnService.EXTRA_MESSAGE).orEmpty()
             statusMessage = message
+            val rejectedIds = intent.getStringArrayListExtra(V2SpeedVpnService.EXTRA_REJECTED_IDS).orEmpty().toSet()
+            if (rejectedIds.isNotEmpty()) {
+                nodes.removeAll { it.id in rejectedIds }
+                renderNodes()
+            }
+            intent.getStringExtra(V2SpeedVpnService.EXTRA_NODE_ID)?.let { id ->
+                selected = nodes.firstOrNull { it.id == id }
+            }
+            if (::serverSummary.isInitialized) {
+                serverSummary.text = selected?.let {
+                    "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}\nمنبع عمومی: ${it.sourceName}"
+                } ?: "سروری انتخاب نشده\nبرای انتخاب از فهرست‌های عمومی لمس کنید"
+            }
             statusLabel.text = message
             updateConnectionUi()
         }
@@ -210,10 +230,15 @@ class MainActivity : Activity() {
 
     private fun renderServersPage() {
         page.addView(label("سرورها", 23f, C.WHITE, true), bottomSpace(6))
-        page.addView(label("فقط سه منبع اشتراک تعریف‌شده در برنامه بارگیری می‌شوند.", 13f, C.MUTED), bottomSpace(12))
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(actionButton("بارگیری سرورها") { loadFeeds() }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        actions.addView(actionButton("خانه") { showTab(TAB_HOME) }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+        page.addView(label("اتصال هوشمند، کانفیگ‌ها را بررسی می‌کند؛ منابع فعلی سه فهرست عمومی‌اند، نه سرور رسمی V2Speed.", 13f, C.MUTED), bottomSpace(12))
+        val connectActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        connectActions.addView(actionButton("اتصال هوشمند") { beginSmartConnect() }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        connectActions.addView(actionButton("اتصال دستی") { connectSelectedManually() }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(connectActions, bottomSpace(8))
+            addView(actionButton("تازه‌سازی سه فهرست عمومی") { loadFeeds() }, LinearLayout.LayoutParams(-1, dp(46)))
+        }
         page.addView(actions, bottomSpace())
         serverList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         page.addView(serverList)
@@ -383,21 +408,124 @@ class MainActivity : Activity() {
     private fun isConnected(): Boolean = vpnState == V2SpeedVpnService.STATE_CONNECTED || vpnState == V2SpeedVpnService.STATE_CONNECTING
 
     private fun onPowerClicked() {
-        if (isConnected()) {
+        if (isConnected() || smartSelectionRunning) {
+            if (smartSelectionRunning) {
+                smartSelectionRunning = false
+                powerButton.isEnabled = true
+            }
             startService(Intent(this, V2SpeedVpnService::class.java).setAction(V2SpeedVpnService.ACTION_STOP))
             vpnState = V2SpeedVpnService.STATE_DISCONNECTED
+            pendingSmartBatch = null
             updateConnectionUi()
             statusLabel.text = "در حال توقف تونل…"
             return
         }
+        beginSmartConnect()
+    }
+
+    private fun connectSelectedManually() {
         val node = selected
         if (node == null) {
-            showTab(TAB_SERVERS)
-            toast("ابتدا یک سرور انتخاب کنید.")
+            toast("برای اتصال دستی ابتدا یک کانفیگ انتخاب کنید.")
             return
         }
+        pendingSmartBatch = null
         val permission = VpnService.prepare(this)
         if (permission != null) startActivityForResult(permission, VPN_PERMISSION_REQUEST) else startVpn(node)
+    }
+
+    private fun beginSmartConnect() {
+        if (isConnected() || smartSelectionRunning || !::powerButton.isInitialized) return
+        smartSelectionRunning = true
+        powerButton.isEnabled = false
+        statusLabel.text = "در حال دریافت و اعتبارسنجی کانفیگ‌ها…"
+        connectionDetail.text = "فقط سه فهرست عمومی بررسی می‌شوند؛ حداکثر ۸ کانفیگ از هر منبع برای پیش‌آزمون نمونه‌برداری می‌شود."
+        statusLabel.setTextColor(C.GREEN)
+        io.execute {
+            val fetched = mutableListOf<ServerNode>()
+            val unavailableSources = mutableListOf<String>()
+            for (source in SOURCES) {
+                try {
+                    val body = downloadText(source.url)
+                    fetched += SubscriptionParser.parseFeed(source.id, source.name, body).take(MAX_NODES_PER_SOURCE)
+                } catch (_: Exception) {
+                    unavailableSources += source.name
+                }
+            }
+            val configValid = fetched.filter { node ->
+                runCatching { SubscriptionParser.toXrayConfig(node.uri) }.isSuccess
+            }
+            val scanCandidates = configValid
+                .groupBy { it.sourceId }
+                .values
+                .flatMap { it.take(MAX_ENDPOINT_PROBES_PER_SOURCE) }
+                .distinctBy { it.uri.substringBefore('#') }
+            val measurements = probeEndpoints(scanCandidates)
+            val ranked = SmartEndpointRanking.rank(measurements, MAX_SMART_CANDIDATES)
+            runOnUiThread {
+                smartSelectionRunning = false
+                powerButton.isEnabled = true
+                nodes.clear()
+                nodes += ranked.map { it.node }
+                selected = null
+                renderNodes()
+                if (::serverSummary.isInitialized) {
+                    serverSummary.text = if (ranked.isEmpty()) {
+                        "کانفیگ قابل‌آزمونی پیدا نشد\nفهرست‌های عمومی را تازه‌سازی کنید"
+                    } else {
+                        "${ranked.size} کانفیگ برای آزمون عمیق آماده است\nسریع‌ترین اتصال TCP: ${ranked.first().latencyMs} ms\nبر پایهٔ پینگ سرور، نه سرعت برنامه‌ها"
+                    }
+                }
+                if (ranked.isEmpty()) {
+                    statusLabel.text = "کانفیگ قابل‌دسترسی پیدا نشد"
+                    connectionDetail.text = "${fetched.size - configValid.size} پیکربندی قابل‌ساخت نبود؛ از ${scanCandidates.size} نمونهٔ TCP، ${scanCandidates.size - measurements.size} سرور پاسخ نداد."
+                    statusLabel.setTextColor(C.RED)
+                    toast("اتصال انجام نشد؛ کانفیگ نامعتبر یا سرورهای در دسترس وجود ندارد.")
+                    return@runOnUiThread
+                }
+                val unavailableText = if (unavailableSources.isEmpty()) "" else " · بعضی فهرست‌ها در دسترس نبودند"
+                statusLabel.text = "در حال آزمون Instagram و YouTube…"
+                connectionDetail.text = "${ranked.size} گزینه بر اساس پینگ TCP مرتب شد؛ پینگ به‌تنهایی کیفیت یا دسترسی اپ‌ها را ثابت نمی‌کند$unavailableText"
+                val permission = VpnService.prepare(this)
+                if (permission != null) {
+                    pendingSmartBatch = ranked
+                    startActivityForResult(permission, VPN_PERMISSION_REQUEST)
+                } else {
+                    startSmartVpn(ranked)
+                }
+            }
+        }
+    }
+
+    private fun probeEndpoints(candidates: List<ServerNode>): List<EndpointMeasurement> {
+        if (candidates.isEmpty()) return emptyList()
+        val executor = Executors.newFixedThreadPool(6)
+        return try {
+            val tasks = candidates.map { node -> Callable { EndpointReachabilityProbe.measure(node) } }
+            executor.invokeAll(tasks, ENDPOINT_PROBE_DEADLINE_SECONDS, TimeUnit.SECONDS)
+                .filterNot { it.isCancelled }
+                .mapNotNull { future -> runCatching { future.get() }.getOrNull() }
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            emptyList()
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    private fun startSmartVpn(batch: List<EndpointMeasurement>) {
+        if (batch.isEmpty()) return
+        pendingSmartBatch = null
+        vpnState = V2SpeedVpnService.STATE_CONNECTING
+        statusMessage = "در حال آزمون واقعی HTTPS از مسیر Xray برای Instagram و YouTube…"
+        updateConnectionUi()
+        statusLabel.text = "در حال آزمون اتصال هوشمند…"
+        connectionDetail.text = "پروب‌ها فقط وضعیت دسترسی و زمان پاسخ HTTPS را می‌سنجند؛ سرعت و پایداری استریم را تضمین نمی‌کنند."
+        val intent = Intent(this, V2SpeedVpnService::class.java)
+            .putStringArrayListExtra(V2SpeedVpnService.EXTRA_SMART_URIS, ArrayList(batch.map { it.node.uri }))
+            .putStringArrayListExtra(V2SpeedVpnService.EXTRA_SMART_IDS, ArrayList(batch.map { it.node.id }))
+            .putExtra(V2SpeedVpnService.EXTRA_ENDPOINT_RTT, batch.map { it.latencyMs }.toLongArray())
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
     }
 
     private fun loadFeeds() {
@@ -439,6 +567,7 @@ class MainActivity : Activity() {
     }
 
     private fun startVpn(node: ServerNode) {
+        pendingSmartBatch = null
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_REQUEST)
         }
@@ -453,9 +582,13 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != VPN_PERMISSION_REQUEST) return
-        val node = selected
-        if (resultCode == RESULT_OK && node != null) startVpn(node)
-        else {
+        val smartBatch = pendingSmartBatch
+        if (resultCode == RESULT_OK && smartBatch != null) {
+            startSmartVpn(smartBatch)
+        } else if (resultCode == RESULT_OK && selected != null) {
+            startVpn(selected!!)
+        } else {
+            pendingSmartBatch = null
             vpnState = V2SpeedVpnService.STATE_DISCONNECTED
             updateConnectionUi()
             statusLabel.text = "مجوز VPN داده نشد؛ تونلی برقرار نشد."
@@ -572,6 +705,9 @@ class MainActivity : Activity() {
         private const val NOTIFICATION_REQUEST = 802
         private const val MAX_FEED_BYTES = 1_000_000
         private const val MAX_NODES_PER_SOURCE = 250
+        private const val MAX_ENDPOINT_PROBES_PER_SOURCE = 8
+        private const val MAX_SMART_CANDIDATES = 5
+        private const val ENDPOINT_PROBE_DEADLINE_SECONDS = 12L
         private val SOURCES = listOf(
             Source("iboxz", "Free V2ray Collector · Mix", "https://raw.githubusercontent.com/iboxz/free-v2ray-collector/main/main/mix"),
             Source("thomas", "ThomasJasperthecat · Sublist 1", "https://raw.githubusercontent.com/ThomasJasperthecat/sub/main/sublist1.txt"),

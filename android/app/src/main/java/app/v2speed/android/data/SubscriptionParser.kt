@@ -13,6 +13,8 @@ data class ServerNode(
     val id: String,
     val name: String,
     val endpoint: String,
+    val host: String,
+    val port: Int,
     val protocol: String,
     val sourceId: String,
     val sourceName: String,
@@ -59,6 +61,8 @@ object SubscriptionParser {
             id = digest("$sourceId\u0000$uriText"),
             name = display.name.ifBlank { display.endpoint },
             endpoint = display.endpoint,
+            host = display.host,
+            port = display.port,
             protocol = if (scheme == "ss") "shadowsocks" else scheme,
             sourceId = sourceId,
             sourceName = sourceName,
@@ -66,26 +70,40 @@ object SubscriptionParser {
         )
     }
 
-    fun toXrayConfig(uriText: String): String {
+    fun toXrayConfig(uriText: String, includeTun: Boolean = true, socksProbePort: Int? = null): String {
         val scheme = uriText.substringBefore("://", "").lowercase()
         require(scheme in schemes) { "پروتکل پشتیبانی نمی‌شود." }
+        require(includeTun || socksProbePort != null) { "At least one inbound is required." }
+        socksProbePort?.let { require(it in 1..65535) { "Invalid local probe port." } }
         val parsed = when (scheme) {
             "vmess" -> parseVmess(uriText) ?: error("لینک VMess نامعتبر است.")
             "ss" -> parseShadowsocks(uriText) ?: error("لینک Shadowsocks نامعتبر است.")
             else -> parseStandard(uriText, scheme) ?: error("لینک پیکربندی نامعتبر است.")
         }
         val outbound = buildOutbound(parsed, scheme)
-        val inboundSettings = JSONObject()
-            .put("name", "v2speed-tun")
-            .put("mtu", 1500)
-            .put("gateway", JSONArray().put("10.88.0.1/30").put("fd88::1/126"))
-            .put("dns", JSONArray().put("1.1.1.1").put("2606:4700:4700::1111"))
-        return JSONObject()
-            .put("log", JSONObject().put("loglevel", "warning"))
-            .put("inbounds", JSONArray().put(JSONObject()
+        val inbounds = JSONArray()
+        socksProbePort?.let { port ->
+            inbounds.put(JSONObject()
+                .put("tag", "v2speed-service-probe")
+                .put("listen", "127.0.0.1")
+                .put("port", port)
+                .put("protocol", "socks")
+                .put("settings", JSONObject().put("auth", "noauth").put("udp", false)))
+        }
+        if (includeTun) {
+            val inboundSettings = JSONObject()
+                .put("name", "v2speed-tun")
+                .put("mtu", 1500)
+                .put("gateway", JSONArray().put("10.88.0.1/30").put("fd88::1/126"))
+                .put("dns", JSONArray().put("1.1.1.1").put("2606:4700:4700::1111"))
+            inbounds.put(JSONObject()
                 .put("tag", "v2speed-tun")
                 .put("protocol", "tun")
-                .put("settings", inboundSettings)))
+                .put("settings", inboundSettings))
+        }
+        return JSONObject()
+            .put("log", JSONObject().put("loglevel", "warning"))
+            .put("inbounds", inbounds)
             .put("outbounds", JSONArray()
                 .put(outbound)
                 .put(JSONObject().put("tag", "direct").put("protocol", "freedom"))

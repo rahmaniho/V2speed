@@ -1,6 +1,7 @@
 package app.v2speed.android.data
 
 import android.util.Base64
+import java.net.InetAddress
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,6 +21,8 @@ class SubscriptionParserTest {
         assertNotNull(node)
         assertEquals("Berlin", node!!.name)
         assertEquals("edge.example:443", node.endpoint)
+        assertEquals("edge.example", node.host)
+        assertEquals(443, node.port)
         val config = JSONObject(SubscriptionParser.toXrayConfig(link))
         val inbound = config.getJSONArray("inbounds").getJSONObject(0)
         assertEquals("tun", inbound.getString("protocol"))
@@ -49,6 +52,56 @@ class SubscriptionParserTest {
         assertEquals("shadowsocks", SubscriptionParser.parseNode("thomas", "source", shadowsocks)?.protocol)
         assertNull(SubscriptionParser.parseNode("thomas", "source", "http://example.invalid"))
         assertNull(SubscriptionParser.parseNode("thomas", "source", "vmess://broken"))
+    }
+
+    @Test
+    fun smartEndpointRankingKeepsFastestUniqueCandidatesOnly() {
+        val fast = SubscriptionParser.parseNode("a", "source-a", "vless://11111111-1111-1111-1111-111111111111@fast.example:443#Fast")!!
+        val slow = SubscriptionParser.parseNode("b", "source-b", "vless://22222222-2222-2222-2222-222222222222@slow.example:443#Slow")!!
+        val duplicate = fast.copy(sourceId = "other", sourceName = "other")
+        val ranked = SmartEndpointRanking.rank(
+            listOf(EndpointMeasurement(slow, 180), EndpointMeasurement(fast, 42), EndpointMeasurement(duplicate, 25)),
+            limit = 4
+        )
+        assertEquals(listOf(fast, slow), ranked.map { it.node })
+        assertEquals(emptyList<EndpointMeasurement>(), SmartEndpointRanking.rank(ranked, limit = 0))
+    }
+
+    @Test
+    fun serviceRankingRequiresBothSiteChecksAndUsesTheirAverage() {
+        val fastest = SmartProbeCandidate("fast", "vless://fast", 90, 40, 60)
+        val second = SmartProbeCandidate("second", "vless://second", 25, 70, 70)
+        val youtubeOnly = SmartProbeCandidate("partial", "vless://partial", 10, 20, 0)
+        val ranked = SmartServiceRanking.rank(listOf(second, youtubeOnly, fastest))
+        assertEquals(listOf("fast", "second"), ranked.map { it.nodeId })
+    }
+
+    @Test
+    fun endpointPreflightRejectsLoopbackAddresses() {
+        assertFalse(EndpointReachabilityProbe.isPubliclyRoutable(InetAddress.getByName("127.0.0.1")))
+        assertFalse(EndpointReachabilityProbe.isPubliclyRoutable(InetAddress.getByName("10.0.0.7")))
+    }
+
+    @Test
+    fun createsLoopbackOnlyProbeConfigWithoutSystemTun() {
+        val link = "vless://123e4567-e89b-12d3-a456-426614174000@edge.example:443?security=tls&sni=edge.example#Probe"
+        val config = JSONObject(SubscriptionParser.toXrayConfig(link, includeTun = false, socksProbePort = 18991))
+        val inbounds = config.getJSONArray("inbounds")
+        assertEquals(1, inbounds.length())
+        val socks = inbounds.getJSONObject(0)
+        assertEquals("127.0.0.1", socks.getString("listen"))
+        assertEquals(18991, socks.getInt("port"))
+        assertEquals("socks", socks.getString("protocol"))
+        assertFalse(socks.getJSONObject("settings").getBoolean("udp"))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidLocalProbePort() {
+        SubscriptionParser.toXrayConfig(
+            "trojan://secret@edge.example:443?security=tls&sni=edge.example",
+            includeTun = false,
+            socksProbePort = 70000
+        )
     }
 
     @Test
