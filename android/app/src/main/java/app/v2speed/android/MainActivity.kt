@@ -16,6 +16,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -35,11 +36,13 @@ class MainActivity : Activity() {
     private var selected: ServerNode? = null
     private lateinit var page: LinearLayout
     private lateinit var statusLabel: TextView
+    private lateinit var connectionDetail: TextView
     private lateinit var powerButton: TextView
     private lateinit var serverSummary: TextView
     private lateinit var serverList: LinearLayout
     private lateinit var bottomNav: LinearLayout
     private var vpnState = V2SpeedVpnService.STATE_DISCONNECTED
+    private var statusMessage = ""
     private var receiverRegistered = false
     private var activeTab = TAB_HOME
 
@@ -47,6 +50,7 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             vpnState = intent?.getStringExtra(V2SpeedVpnService.EXTRA_STATE) ?: return
             val message = intent.getStringExtra(V2SpeedVpnService.EXTRA_MESSAGE).orEmpty()
+            statusMessage = message
             statusLabel.text = message
             updateConnectionUi()
         }
@@ -77,7 +81,10 @@ class MainActivity : Activity() {
     private fun buildShell() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(C.BG)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xff03090c.toInt(), 0xff071418.toInt(), 0xff05090d.toInt())
+            )
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
         val header = LinearLayout(this).apply {
@@ -92,8 +99,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        brand.addView(label("V2Speed", 19f, C.WHITE, true), matchWrap())
-        brand.addView(label("جاویدنامان وطن", 13f, C.MUTED), matchWrap())
+        brand.addView(label("V2Speed NEXT", 19f, C.WHITE, true), matchWrap())
+        brand.addView(label("جاویدنامان وطن", 13f, C.GOLD), matchWrap())
         val sunMark = roundLabel("☼", 48, C.CARD, C.GOLD, 25f).apply {
             contentDescription = "تنظیمات V2Speed"
             setOnClickListener { showTab(TAB_SETTINGS) }
@@ -137,16 +144,16 @@ class MainActivity : Activity() {
     }
 
     private fun renderHomePage() {
-        page.addView(crest(), LinearLayout.LayoutParams(-1, dp(190)).apply { bottomMargin = dp(12) })
+        page.addView(crest(), LinearLayout.LayoutParams(-1, dp(220)).apply { bottomMargin = dp(12) })
 
         val connectionCard = card()
         connectionCard.setPadding(dp(16), dp(16), dp(16), dp(16))
         val statusTitle = label("وضعیت اتصال   ◈", 14f, C.MUTED, true)
         statusLabel = label("آمادهٔ اتصال", 23f, C.GREEN, true).apply { gravity = Gravity.CENTER }
-        val detail = label("برای شروع، سروری انتخاب کنید", 13f, C.MUTED).apply { gravity = Gravity.CENTER }
+        connectionDetail = label("یک سرور از فهرست انتخاب کنید", 13f, C.MUTED).apply { gravity = Gravity.CENTER }
         connectionCard.addView(statusTitle)
         connectionCard.addView(statusLabel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
-        connectionCard.addView(detail, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+        connectionCard.addView(connectionDetail, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
 
         val controlRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -177,7 +184,9 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(12), dp(14), dp(12))
             setOnClickListener { showTab(TAB_SERVERS) }
         }
-        serverSummary = label(selected?.let { "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}" } ?: "سروری انتخاب نشده\nبرای انتخاب، اینجا را لمس کنید", 14f, C.WHITE, true)
+        serverSummary = label(selected?.let {
+            "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}\nمنبع عمومی: ${it.sourceName}"
+        } ?: "سروری انتخاب نشده\nبرای انتخاب از فهرست‌های عمومی لمس کنید", 13f, C.WHITE, true)
         serverCard.addView(serverSummary, LinearLayout.LayoutParams(0, -2, 1f))
         serverCard.addView(label("◎", 24f, C.GOLD, true))
         serverCard.addView(label("  ›  تغییر سرور", 13f, C.GREEN, true))
@@ -240,27 +249,34 @@ class MainActivity : Activity() {
 
     private fun crest(): View {
         val frame = FrameLayout(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0xff15130f.toInt(), 0xff0b0d12.toInt(), C.BG)).apply { cornerRadius = dp(20).toFloat() }
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xff0c1918.toInt(), 0xff071014.toInt(), C.BG)
+            ).apply { cornerRadius = dp(22).toFloat() }
         }
+        val orbit = View(this).apply {
+            background = rounded(Color.TRANSPARENT, C.GOLD_DARK, 100, dp(1))
+            alpha = 0.75f
+        }
+        frame.addView(orbit, FrameLayout.LayoutParams(dp(194), dp(194), Gravity.CENTER))
         val halo = TextView(this).apply {
             text = "✦       ☼       ✦"
             gravity = Gravity.CENTER
-            textSize = 22f
+            textSize = 20f
             setTextColor(C.GOLD)
             alpha = 0.8f
         }
-        frame.addView(halo, FrameLayout.LayoutParams(-1, dp(45), Gravity.TOP))
-        val seal = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            background = rounded(0xff10251b.toInt(), C.GOLD_DARK, 100, dp(2))
-            setPadding(dp(18), dp(12), dp(18), dp(12))
+        frame.addView(halo, FrameLayout.LayoutParams(-1, dp(32), Gravity.TOP))
+        val emblem = ImageView(this).apply {
+            setImageResource(R.drawable.v2speed_lion_sun)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "نشان شیر و خورشید V2Speed"
         }
-        seal.addView(label("♛", 66f, C.GOLD, true).apply { gravity = Gravity.CENTER })
-        seal.addView(label("V2SPEED", 13f, C.GOLD, true).apply { gravity = Gravity.CENTER; letterSpacing = 0.12f })
-        frame.addView(seal, FrameLayout.LayoutParams(dp(148), dp(148), Gravity.CENTER))
-        val caption = label("امنیت  ·  سرعت  ·  آزادی", 12f, C.MUTED).apply { gravity = Gravity.CENTER }
-        frame.addView(caption, FrameLayout.LayoutParams(-1, dp(25), Gravity.BOTTOM))
+        frame.addView(emblem, FrameLayout.LayoutParams(dp(176), dp(176), Gravity.CENTER))
+        frame.addView(
+            label("جاویدنامان وطن", 12f, C.GOLD, true).apply { gravity = Gravity.CENTER },
+            FrameLayout.LayoutParams(-1, dp(24), Gravity.BOTTOM)
+        )
         return frame
     }
 
@@ -310,7 +326,9 @@ class MainActivity : Activity() {
                 setPadding(dp(13), dp(11), dp(13), dp(11))
                 setOnClickListener {
                     selected = node
-                    if (::serverSummary.isInitialized) serverSummary.text = "${node.name}\n${node.endpoint} · ${node.protocol.uppercase()}"
+                    if (::serverSummary.isInitialized) {
+                        serverSummary.text = "${node.name}\n${node.endpoint} · ${node.protocol.uppercase()}\nمنبع عمومی: ${node.sourceName}"
+                    }
                     renderNodes()
                 }
             }
@@ -343,13 +361,21 @@ class MainActivity : Activity() {
         if (!::statusLabel.isInitialized) return
         val connected = isConnected()
         statusLabel.text = when (vpnState) {
-            V2SpeedVpnService.STATE_CONNECTED -> "متصل هستید"
+            V2SpeedVpnService.STATE_CONNECTED -> "هستهٔ VPN فعال است"
             V2SpeedVpnService.STATE_CONNECTING -> "در حال اتصال…"
             V2SpeedVpnService.STATE_ERROR -> "اتصال برقرار نشد"
             else -> "آمادهٔ اتصال"
         }
         statusLabel.setTextColor(if (vpnState == V2SpeedVpnService.STATE_ERROR) C.RED else C.GREEN)
-        powerButton.text = if (connected) "⏻" else "⏻"
+        if (::connectionDetail.isInitialized) {
+            connectionDetail.text = when (vpnState) {
+                V2SpeedVpnService.STATE_CONNECTED -> statusMessage.ifBlank { "تونل شروع شده؛ دسترسی اینترنت مستقل بررسی نشده است." }
+                V2SpeedVpnService.STATE_CONNECTING -> "در حال برقراری تونل…"
+                V2SpeedVpnService.STATE_ERROR -> statusMessage.ifBlank { "پیکربندی یا دسترسی شبکه را بررسی کنید." }
+                else -> selected?.let { "${it.name} · ${it.sourceName}" } ?: "یک سرور از فهرست انتخاب کنید"
+            }
+        }
+        powerButton.text = "⏻"
         powerButton.setTextColor(if (connected) C.GREEN else C.GOLD)
         powerButton.setBackgroundDrawable(rounded(C.CARD, if (connected) C.GREEN else C.GOLD_DARK, 100, dp(2)))
     }
@@ -396,7 +422,11 @@ class MainActivity : Activity() {
                 nodes += loaded
                 if (selected != null && nodes.none { it.id == selected?.id }) selected = null
                 renderNodes()
-                if (::serverSummary.isInitialized) serverSummary.text = selected?.let { "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}" } ?: "سروری انتخاب نشده\nبرای انتخاب، اینجا را لمس کنید"
+                if (::serverSummary.isInitialized) {
+                    serverSummary.text = selected?.let {
+                        "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}\nمنبع عمومی: ${it.sourceName}"
+                    } ?: "سروری انتخاب نشده\nبرای انتخاب از فهرست‌های عمومی لمس کنید"
+                }
                 if (::statusLabel.isInitialized && activeTab == TAB_HOME && vpnState == V2SpeedVpnService.STATE_DISCONNECTED) {
                     statusLabel.text = when {
                         loaded.isEmpty() -> "هیچ سروری بارگیری نشد"
@@ -461,12 +491,24 @@ class MainActivity : Activity() {
 
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = rounded(C.CARD, C.BORDER, 20, dp(1))
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xff122024.toInt(), 0xff0a1317.toInt())
+        ).apply {
+            cornerRadius = dp(20).toFloat()
+            setStroke(dp(1), C.BORDER)
+        }
     }
 
     private fun infoRow(title: String, value: String): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = rounded(C.CARD, C.BORDER, 14, dp(1))
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xff101d20.toInt(), C.CARD)
+        ).apply {
+            cornerRadius = dp(14).toFloat()
+            setStroke(dp(1), C.BORDER)
+        }
         setPadding(dp(14), dp(12), dp(14), dp(12))
         addView(label(title, 13f, C.MUTED))
         addView(label(value, 15f, C.WHITE, true).apply { setPadding(0, dp(3), 0, 0) })
@@ -507,14 +549,14 @@ class MainActivity : Activity() {
     }
 
     private object C {
-        const val BG = 0xff090b0f.toInt()
-        const val CARD = 0xff15171c.toInt()
-        const val BORDER = 0xff383a40.toInt()
-        const val WHITE = 0xfff4f2ed.toInt()
-        const val MUTED = 0xffa6a5a2.toInt()
-        const val GOLD = 0xffe2b955.toInt()
-        const val GOLD_DARK = 0xff896b2d.toInt()
-        const val GREEN = 0xff51c878.toInt()
+        const val BG = 0xff05090d.toInt()
+        const val CARD = 0xff0d1519.toInt()
+        const val BORDER = 0xff30423d.toInt()
+        const val WHITE = 0xfff4f6f3.toInt()
+        const val MUTED = 0xffa2b0ac.toInt()
+        const val GOLD = 0xffd6a443.toInt()
+        const val GOLD_DARK = 0xff80632f.toInt()
+        const val GREEN = 0xff62df88.toInt()
         const val RED = 0xffff7777.toInt()
     }
 

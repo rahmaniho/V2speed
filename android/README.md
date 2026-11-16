@@ -16,7 +16,7 @@ The verified AAR is a third-party release from AndroidLibXrayLite; the script ch
 
 ## Current implementation and limitations
 
-- The app uses Android `VpnService`, a pinned Xray gomobile binding, in-memory feed-node selection, and a Persian-first native Views interface.
+- The app uses Android `VpnService`, a pinned Xray gomobile binding, in-memory feed-node selection, a Persian-first native Views interface, and the supplied Lion and Sun V2Speed artwork on the home screen.
 - The connection announcement is optional (on by default) in Settings. On the app's connected-state transition, Android's installed TextToSpeech engine is asked to speak `پاینده ایران، تا ابد جاوید شاه.` using Persian locale, reduced speech rate/pitch and reduced utterance volume. No audio file is downloaded or saved. Voice quality and Persian-language availability depend on the device's TTS engine; if no Persian voice is available, nothing is spoken. The user can disable the announcement locally in Settings.
 - Compile success does not prove the VPN tunnel carries traffic. The Xray binding's TUN descriptor behavior, real connectivity, DNS/leak behavior, network changes, stop/revoke lifecycle and physical-device compatibility still require verification.
 - Speed measurement, DNS leak testing, Kill Switch, persistent personal profiles, officially managed infrastructure, backend, iOS app and production release signing are not implemented.
