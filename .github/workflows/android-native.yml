@@ -49,7 +49,18 @@ jobs:
         run: sh android/fetch-xray-core.sh
       - name: Build native debug APK
         working-directory: android
-        run: gradle --no-daemon --stacktrace :app:testDebugUnitTest :app:assembleDebug
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon --console=plain --stacktrace :app:testDebugUnitTest :app:assembleDebug > "$RUNNER_TEMP/android-build.log" 2>&1
+          result=$?
+          if [ "$result" -ne 0 ]; then
+            echo '### Android Gradle failure excerpt' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 60 "$RUNNER_TEMP/android-build.log" | sed -E 's/\x1B\[[0-9;]*[[:alpha:]]//g' | tee -a "$GITHUB_STEP_SUMMARY" | while IFS= read -r line; do
+              printf '::error title=Gradle output::%s\n' "$line"
+            done
+          fi
+          exit "$result"
       - uses: actions/upload-artifact@v4
         with:
           name: v2speed-android-debug-apk
