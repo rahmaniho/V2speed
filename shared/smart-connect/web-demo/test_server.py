@@ -124,6 +124,11 @@ class SubscriptionParserTests(unittest.TestCase):
         page = (SERVER.WEB_ROOT / "app.html").read_text()
         self.assertIn("کپی لینک اشتراک", page)
         self.assertIn("copyText(source.url)", page)
+        self.assertIn("function formatAge(seconds)", page)
+        self.assertIn("نسخهٔ ذخیره‌شده · ${age}", page)
+        self.assertIn("منبع از نسخهٔ ذخیره‌شده است.", page)
+        worker = (SERVER.WEB_ROOT / "sw.js").read_text()
+        self.assertIn("v2speed-app-shell-v7", worker)
 
 
 if __name__ == "__main__":
