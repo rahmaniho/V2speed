@@ -1,0 +1,4 @@
+.gradle/
+**/build/
+app/libs/libv2ray.aar
+local.properties

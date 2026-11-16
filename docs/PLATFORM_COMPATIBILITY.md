@@ -1,18 +1,18 @@
 # Platform Compatibility Matrix (provisional)
 
-No supported version is declared until an engine is selected and actual builds/device tests exist.
+Product target chosen as Android 10+ (API 29), but no Android release compatibility is claimed until engine/build validation and physical-device tests exist.
 
 | Capability | Android target | iOS target | Current status / required proof |
 |---|---|---|---|
-| UI | Kotlin + Jetpack Compose, native | Swift + SwiftUI, native | Target decision only; source/build absent |
-| VPN API | `VpnService`; user consent; foreground service notification; network callbacks; correct fd teardown | `NetworkExtension` with `NEPacketTunnelProvider` and `NETunnelProviderManager`; app-group/provider configuration | Not implemented; must test permission denial, active interruption, restart, stop and network transition on devices |
-| Engine | Adapter around a pinned, approved mobile core; candidate Xray-core, no final selection | Same protocol contract with independently verified iOS-compatible core adapter | Unselected; Android AAR and Go wrapper are not ported evidence |
-| Configuration | Capability-gated, versioned config model; Android-specific per-app include/exclude if adopted | Capability-gated settings and provider-safe delivery | Not implemented; app-specific routing semantics differ by platform |
+| UI | Native Kotlin Views prototype, Android 10+ / API 29+ for MVP | Swift + SwiftUI, native | User selected Android 10+ and open-source distribution; first screen is Persian-first, not yet accessibility/localization audited |
+| VPN API | `VpnService`; Android consent; foreground service and stop action; dual-stack TUN setup | `NetworkExtension` with `NEPacketTunnelProvider` and `NETunnelProviderManager`; app-group/provider configuration | Android spike added but not built/run here; permission denial, interruption, lifecycle, descriptor cleanup and network transitions need device tests |
+| Engine | Reflective adapter spike around pinned AndroidLibXrayLite v26.11.9 / Xray AAR | Same protocol contract with independently verified iOS-compatible core adapter | Android candidate only; actual binding invocation, release provenance, license/SBOM and ABI package inspection remain open |
+| Configuration | In-memory VLESS/VMess/Trojan/Shadowsocks-to-Xray converter prototype; own app excluded from its tunnel | Capability-gated settings and provider-safe delivery | Android parser/config mapping is not yet validated against a running core; app-specific routing semantics differ by platform |
 | DNS/IP | Explicit IPv4/IPv6 routes, DNS servers, leak behavior tests | Packet tunnel IPv4/IPv6/DNS settings; platform routing limitations | Not implemented; no no-leak claim |
 | Background operation | Foreground-service and platform policy restrictions; notifications | Packet tunnel extension lifecycle and Apple-managed constraints | Not implemented; Android behavior cannot be assumed to translate |
 | Secure storage | Android Keystore-backed key wrapping/protection, app-private storage | Keychain and appropriately scoped access group | Not implemented; hardware-backed protection availability varies |
-| Minimum OS / SDK | TBD after engine/SDK support study; user-requested v2rayNG ref minimum API 24 is not inherited | TBD after Xcode, Network Extension and core support review | Unset, not release ready |
-| Distribution | Android signing, Play/F-Droid policy and native ABI/package matrix | Apple Developer account, Network Extension entitlement, provisioning/signing | Not verified; no Android SDK/JDK or Xcode in this environment |
+| Minimum OS / SDK | MVP decision: Android 10+ (API 29), per user. Not a promise for all Android versions; selected engine may support older API 24 but this product target is 29+ | TBD after Xcode, Network Extension and core support review | Android target decided; native build and device verification absent |
+| Distribution | Open-source debug APK via CI; universal ABI target only if the pinned core contains each ABI; Play/F-Droid policy and release signing still require review | Apple Developer account, Network Extension entitlement, provisioning/signing | Android CI build pending; this sandbox has no Android SDK/JDK and no release key |
 | Locale/accessibility | Persian + English, RTL/LTR, TalkBack, dynamic text | Persian + English, RTL/LTR, VoiceOver, Dynamic Type | Requirements captured; no UI or accessibility audit yet |
 
 ## Required per-platform verification

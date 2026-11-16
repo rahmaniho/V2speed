@@ -110,6 +110,18 @@ class SubscriptionParserTests(unittest.TestCase):
             with self.assertRaises(OSError):
                 SERVER.fetch_source_with_stale_fallback("iboxz")
 
+    def test_native_android_mvp_requires_real_vpn_service_and_minimum_api(self):
+        app = SERVER.ROOT / "android" / "app"
+        build = (app / "build.gradle").read_text()
+        manifest = (app / "src" / "main" / "AndroidManifest.xml").read_text()
+        service = (app / "src" / "main" / "java" / "app" / "v2speed" / "android" / "vpn" / "V2SpeedVpnService.kt").read_text()
+        self.assertIn("minSdk 29", build)
+        self.assertIn("android.permission.BIND_VPN_SERVICE", manifest)
+        self.assertIn("android.net.VpnService", manifest)
+        self.assertIn(": VpnService()", service)
+        self.assertIn(".establish()", service)
+        self.assertIn("Android 10+", (SERVER.ROOT / "docs" / "ANDROID_NATIVE_MVP.md").read_text())
+
     def test_manual_refresh_has_a_cooldown(self):
         previous = SERVER.LAST_FORCED_REFRESH
         try:

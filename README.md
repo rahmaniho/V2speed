@@ -6,7 +6,7 @@ V2Speed is a greenfield Android + iOS VPN client intended to combine a simple on
 
 ## Current delivery status
 
-Milestone 1 source audits are complete; a small **Milestone 2 domain foundation** is now implemented and tested. The Android/iOS application, VPN engine, server fleet and backend do not yet exist. No feature parity, tunnel connectivity, Android/iOS build, signing, device test, or release readiness is claimed.
+Milestone 1 source audits and the portable **Milestone 2 domain foundation** are complete. A first **native Android VPN spike** now exists for the user-selected Android 10+ (API 29) target, with an Android `VpnService`, three fixed feeds, and a pinned Xray binding candidate. Its first CI APK build is pending; the binding and tunnel have not yet been verified on a device. This is not a release, and no speed, stability, leak-prevention, all-Android-version, or release-readiness claim is made. The iOS app, server fleet and backend do not exist.
 
 Milestone 1 outputs and current implementation:
 
@@ -29,9 +29,9 @@ The two images supplied by the user are preserved as the original Lion and Sun a
 ## Engineering and legal gates
 
 - Do not copy or adapt v2rayNG code before legal review: its repository is GPL-3.0. The inspected Android wrapper, Xray core, HEV tunnel and v2fly core have distinct license terms; see the report. No reference source was copied.
-- Xray-core is a candidate, not a selected or cleared production engine. iOS compatibility, transitive licenses, protocol parity and real-device performance are unverified.
+- Android uses a pinned Xray/AndroidLibXrayLite candidate for a technical spike; it is not production-selected or legally cleared. Its binding, ABIs, transitive licenses, protocol parity and real-device behavior remain unverified. Android 10+ is the MVP floor; older versions are not promised.
 - Deterministic Smart Connect scoring, a generation-safe state reducer, a bounded ranked fallback planner, a session coordinator, timestamp-aware observation aggregation, a bounded probe scheduling plan, and a scheduler-result-to-observation bridge are implemented and tested in `shared/smart-connect/`; run `make -C shared/smart-connect test`.
-- The session coordinator can aggregate caller-owned per-server observation batches before ranking. The bridge maps scheduler `FAILED`/`TIMED_OUT` states to failed observations with no metric mask; a `SUCCEEDED` state still requires caller-supplied measurement data. The aggregator and scheduler read no clock and perform no network I/O or task cancellation. Tunnel success still depends on a caller-reported verified outcome; real probes, tunnel establishment/verification and engine-driven fallback remain unimplemented. No ICMP-only ranking or invented metrics.
+- The session coordinator can aggregate caller-owned per-server observation batches before ranking. The bridge maps scheduler `FAILED`/`TIMED_OUT` states to failed observations with no metric mask; a `SUCCEEDED` state still requires caller-supplied measurement data. The aggregator and scheduler read no clock and perform no network I/O or task cancellation. The new Android service has a tunnel-start spike, but no device evidence yet that a real request traverses it; real probes, verified tunnel outcomes and engine-driven fallback remain unimplemented. No ICMP-only ranking or invented metrics.
 - Local configuration management must not require a backend. No database/cache is selected.
 
 ## Experimental CSV ranking tool
@@ -62,4 +62,4 @@ Run the browser prototype in a trusted local environment with `python3 shared/sm
 
 ## Tooling / verification limitations
 
-At this checkout, GCC, Python 3 and Node.js are available; GCC was used for the portable domain core. Java/JDK, Gradle executable, Kotlin compiler, Android SDK/ADB, Go, Xcode/Swift and Apple Network Extension entitlements are not available. Therefore native client build/runtime verification cannot be performed here. The exact missing test evidence is recorded rather than presented as complete.
+At this checkout, GCC, Python 3 and Node.js are available; GCC was used for the portable domain core. Java/JDK, Gradle executable, Kotlin compiler, Android SDK/ADB, Go, Xcode/Swift and Apple Network Extension entitlements are not available locally. A GitHub Actions Android build was added to obtain a debug APK, but CI compilation and physical-device runtime verification are still pending. The exact missing evidence is recorded rather than presented as complete.
