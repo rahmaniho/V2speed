@@ -178,7 +178,7 @@ class MainActivity : Activity() {
         }
         serverSummary = label(selected?.let { "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}" } ?: "سروری انتخاب نشده\nبرای انتخاب، اینجا را لمس کنید", 14f, C.WHITE, true)
         serverCard.addView(serverSummary, LinearLayout.LayoutParams(0, -2, 1f))
-        serverCard.addView(label("🇩🇪", 24f, C.GOLD))
+        serverCard.addView(label("◎", 24f, C.GOLD, true))
         serverCard.addView(label("  ›  تغییر سرور", 13f, C.GREEN, true))
         page.addView(serverCard, bottomSpace(12))
 
