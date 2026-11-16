@@ -131,7 +131,7 @@ object SubscriptionParser {
                 "path" to data.optString("path"), "fp" to data.optString("fp"), "alpn" to data.optString("alpn")
             ).filterValues(String::isNotBlank)
             Link(data.optString("ps").takeIf(String::isNotBlank) ?: host, "$host:$port", host, port, id, query, data)
-        } catch (_: RuntimeException) { null }
+        } catch (_: Exception) { null }
     }
 
     private fun parseShadowsocks(input: String): Link? {
