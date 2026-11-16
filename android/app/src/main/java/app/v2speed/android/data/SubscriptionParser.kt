@@ -59,7 +59,7 @@ object SubscriptionParser {
             id = digest("$sourceId\u0000$uriText"),
             name = display.name.ifBlank { display.endpoint },
             endpoint = display.endpoint,
-            protocol = scheme,
+            protocol = if (scheme == "ss") "shadowsocks" else scheme,
             sourceId = sourceId,
             sourceName = sourceName,
             uri = uriText
