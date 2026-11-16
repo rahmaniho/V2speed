@@ -55,7 +55,7 @@ jobs:
           mapfile -t classes < <(jar tf "$RUNNER_TEMP/xray-aar/classes.jar" | grep 'class$' | grep -E '(Libv2ray|CoreController|CoreCallbackHandler)' | sed 's#/#.#g; s#.class$##' | grep -v '[$]')
           for class in "${classes[@]}"; do
             javap -classpath "$RUNNER_TEMP/xray-aar/classes.jar" -public "$class" 2>/dev/null || true
-          done | grep -E '(^public (class|interface)|initCoreEnv|newCoreController|startLoop|stopLoop|CoreCallbackHandler)' | tee -a "$GITHUB_STEP_SUMMARY" | while IFS= read -r line; do
+          done | grep -E '(^public (class|interface)|initCoreEnv|newCoreController|startLoop|stopLoop|CoreCallbackHandler|startup|shutdown|emit|status)' | tee -a "$GITHUB_STEP_SUMMARY" | while IFS= read -r line; do
             printf '::notice title=Pinned Xray API::%s\n' "$line"
           done
       - name: Build native debug APK
