@@ -32,6 +32,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorCompletionService
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
@@ -40,6 +42,7 @@ class MainActivity : Activity() {
     private val nodes = mutableListOf<ServerNode>()
     private var selected: ServerNode? = null
     private lateinit var page: LinearLayout
+    private lateinit var pageScroller: ScrollView
     private lateinit var statusLabel: TextView
     private lateinit var connectionDetail: TextView
     private lateinit var powerButton: TextView
@@ -94,7 +97,7 @@ class MainActivity : Activity() {
             if (::serverSummary.isInitialized) {
                 serverSummary.text = selected?.let {
                     "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}\nمنبع عمومی: ${it.sourceName}"
-                } ?: "سروری انتخاب نشده\nبرای انتخاب از فهرست‌های عمومی لمس کنید"
+                } ?: "هنوز سروری رتبه‌بندی نشده\nبرای مشاهدهٔ نتیجه، اتصال هوشمند را اجرا کنید"
             }
             statusLabel.text = message
             updateConnectionUi()
@@ -176,12 +179,12 @@ class MainActivity : Activity() {
         header.addView(brand, LinearLayout.LayoutParams(0, dp(52), 1f))
         header.addView(sunMark, LinearLayout.LayoutParams(dp(48), dp(48)))
 
-        val scroller = ScrollView(this).apply { clipToPadding = false }
+        pageScroller = ScrollView(this).apply { clipToPadding = false }
         page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(8), dp(18), dp(14))
         }
-        scroller.addView(page)
+        pageScroller.addView(page)
         bottomNav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -193,7 +196,7 @@ class MainActivity : Activity() {
             addView(bottomNav, LinearLayout.LayoutParams(-1, dp(66)))
         }
         root.addView(header)
-        root.addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
+        root.addView(pageScroller, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(navWrap)
         setContentView(root)
         renderBottomNav()
@@ -208,6 +211,7 @@ class MainActivity : Activity() {
             else -> renderHomePage()
         }
         renderBottomNav()
+        pageScroller.post { pageScroller.scrollTo(0, 0) }
     }
 
     private fun renderHomePage() {
@@ -217,7 +221,7 @@ class MainActivity : Activity() {
         connectionCard.setPadding(dp(16), dp(16), dp(16), dp(16))
         val statusTitle = label("وضعیت اتصال   ◈", 14f, C.MUTED, true)
         statusLabel = label("آمادهٔ اتصال", 23f, C.GREEN, true).apply { gravity = Gravity.CENTER }
-        connectionDetail = label("یک سرور از فهرست انتخاب کنید", 13f, C.MUTED).apply { gravity = Gravity.CENTER }
+        connectionDetail = label("برای آزمون همهٔ سرورها و اتصال به بهترین گزینه، دکمهٔ قدرت را لمس کنید.", 13f, C.MUTED).apply { gravity = Gravity.CENTER }
         connectionCard.addView(statusTitle)
         connectionCard.addView(statusLabel, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         connectionCard.addView(connectionDetail, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
@@ -253,10 +257,10 @@ class MainActivity : Activity() {
         }
         serverSummary = label(selected?.let {
             "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}\nمنبع عمومی: ${it.sourceName}"
-        } ?: "سروری انتخاب نشده\nبرای انتخاب از فهرست‌های عمومی لمس کنید", 13f, C.WHITE, true)
+        } ?: "هنوز سروری رتبه‌بندی نشده\nبرای مشاهدهٔ فهرست، اینجا را لمس کنید", 13f, C.WHITE, true)
         serverCard.addView(serverSummary, LinearLayout.LayoutParams(0, -2, 1f))
         serverCard.addView(label("◎", 24f, C.GOLD, true))
-        serverCard.addView(label("  ›  تغییر سرور", 13f, C.GREEN, true))
+        serverCard.addView(label("  ›  مشاهدهٔ سرورها", 13f, C.GREEN, true))
         page.addView(serverCard, bottomSpace(12))
 
         val features = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -277,7 +281,7 @@ class MainActivity : Activity() {
 
     private fun renderServersPage() {
         page.addView(label("سرورها", 23f, C.WHITE, true), bottomSpace(6))
-        page.addView(label("اتصال هوشمند، کانفیگ‌ها را بررسی می‌کند؛ منابع فعلی سه فهرست عمومی‌اند، نه سرور رسمی V2Speed.", 13f, C.MUTED), bottomSpace(12))
+        page.addView(label("اتصال هوشمند همهٔ کانفیگ‌ها را می‌سنجد؛ منابع فعلی سه فهرست عمومی‌اند، نه سرور رسمی V2Speed. لمس ردیف فقط جزئیات را نشان می‌دهد.", 13f, C.MUTED), bottomSpace(12))
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(actionButton("آزمون همه و اتصال بهترین سرور") { beginSmartConnect() }, bottomSpace(8))
@@ -380,9 +384,10 @@ class MainActivity : Activity() {
 
     private fun renderNodes() {
         if (!::serverList.isInitialized) return
+        val previousScrollY = if (::pageScroller.isInitialized) pageScroller.scrollY else 0
         serverList.removeAllViews()
         if (nodes.isEmpty()) {
-            serverList.addView(label("در حال دریافت سرورها یا هنوز فهرستی بارگیری نشده است.", 14f, C.MUTED).apply {
+            serverList.addView(label("هنوز سروری رتبه‌بندی نشده؛ آزمون هوشمند را اجرا کنید.", 14f, C.MUTED).apply {
                 setPadding(dp(12), dp(18), dp(12), dp(18))
             })
             return
@@ -408,7 +413,7 @@ class MainActivity : Activity() {
                 info.addView(label("Instagram ${instagramMs} ms  ·  YouTube ${youtubeMs} ms  ·  TCP ${endpointMs} ms", 11f, C.GREEN))
             }
             row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
-            row.addView(label(if (selected?.id == node.id) "✓ انتخاب‌شده" else "انتخاب", 12f, C.GREEN, true))
+            row.addView(label(if (selected?.id == node.id) "✓ جزئیات" else "جزئیات", 12f, C.GREEN, true))
             serverList.addView(row, bottomSpace(7))
         }
         if (visibleNodeCount < nodes.size) {
@@ -416,6 +421,9 @@ class MainActivity : Activity() {
                 visibleNodeCount = (visibleNodeCount + INITIAL_VISIBLE_NODES).coerceAtMost(nodes.size)
                 renderNodes()
             }, bottomSpace(12))
+        }
+        if (::pageScroller.isInitialized) {
+            pageScroller.post { pageScroller.scrollTo(0, previousScrollY.coerceAtMost(pageScroller.getChildAt(0)?.height ?: 0)) }
         }
     }
 
@@ -452,7 +460,7 @@ class MainActivity : Activity() {
                 V2SpeedVpnService.STATE_TESTING -> statusMessage.ifBlank { "آزمون تمام کانفیگ‌های پاسخ‌گو در حال اجراست…" }
                 V2SpeedVpnService.STATE_CONNECTING -> statusMessage.ifBlank { "آزمون‌ها کامل شد؛ در حال برقراری تونل…" }
                 V2SpeedVpnService.STATE_ERROR -> statusMessage.ifBlank { "پیکربندی یا دسترسی شبکه را بررسی کنید." }
-                else -> selected?.let { "${it.name} · ${it.sourceName}" } ?: "یک سرور از فهرست انتخاب کنید"
+                else -> selected?.let { "جزئیات ${it.name} · ${it.sourceName}" } ?: "برای آزمون همه و اتصال بهترین سرور، دکمهٔ قدرت را لمس کنید."
             }
         }
         powerButton.text = "⏻"
@@ -499,8 +507,14 @@ class MainActivity : Activity() {
         smartSelectionTask = io.submit {
             val fetched = mutableListOf<ServerNode>()
             val unavailableSources = mutableListOf<String>()
-            for (source in SOURCES) {
+            for ((sourceIndex, source) in SOURCES.withIndex()) {
                 if (Thread.currentThread().isInterrupted) return@submit
+                runOnUiThread {
+                    if (generation == smartSelectionGeneration && smartSelectionRunning) {
+                        statusLabel.text = "در حال دریافت فهرست ${sourceIndex + 1} از ${SOURCES.size}…"
+                        connectionDetail.text = source.name
+                    }
+                }
                 try {
                     val body = downloadText(source.url)
                     fetched += SubscriptionParser.parseFeed(source.id, source.name, body)
@@ -513,7 +527,13 @@ class MainActivity : Activity() {
                 runCatching { SubscriptionParser.toXrayConfig(node.uri) }.isSuccess
             }
             val scanCandidates = configValid.distinctBy { it.uri.substringBefore('#') }
-            val measurements = probeEndpoints(scanCandidates)
+            runOnUiThread {
+                if (generation == smartSelectionGeneration && smartSelectionRunning) {
+                    statusLabel.text = "در حال پیش‌آزمون TCP همهٔ کانفیگ‌ها…"
+                    connectionDetail.text = "${scanCandidates.size} کانفیگ قابل‌ساخت؛ بررسی موازی با حداکثر ۶ اتصال هم‌زمان"
+                }
+            }
+            val measurements = probeEndpoints(scanCandidates, generation)
             val ranked = SmartEndpointRanking.rank(measurements, measurements.size)
             if (Thread.currentThread().isInterrupted) return@submit
             runOnUiThread {
@@ -556,13 +576,35 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun probeEndpoints(candidates: List<ServerNode>): List<EndpointMeasurement> {
+    private fun probeEndpoints(candidates: List<ServerNode>, generation: Int): List<EndpointMeasurement> {
         if (candidates.isEmpty()) return emptyList()
         val executor = Executors.newFixedThreadPool(6)
+        val completions = ExecutorCompletionService<EndpointMeasurement?>(executor)
         return try {
-            val tasks = candidates.map { node -> Callable { EndpointReachabilityProbe.measure(node) } }
-            executor.invokeAll(tasks)
-                .mapNotNull { future -> runCatching { future.get() }.getOrNull() }
+            candidates.forEach { node ->
+                completions.submit(Callable { EndpointReachabilityProbe.measure(node) })
+            }
+            val measurements = ArrayList<EndpointMeasurement>()
+            val progressInterval = (candidates.size / 100).coerceAtLeast(1)
+            for (completed in 1..candidates.size) {
+                if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                val measurement = try {
+                    completions.take().get()
+                } catch (_: ExecutionException) {
+                    null
+                }
+                measurement?.let(measurements::add)
+                if (completed % progressInterval == 0 || completed == candidates.size) {
+                    val reachable = measurements.size
+                    runOnUiThread {
+                        if (generation == smartSelectionGeneration && smartSelectionRunning) {
+                            statusLabel.text = "پیش‌آزمون TCP: $completed از ${candidates.size}"
+                            connectionDetail.text = "$reachable سرور پاسخ داد؛ بقیه پس از پایان سنجش کنار گذاشته می‌شوند."
+                        }
+                    }
+                }
+            }
+            measurements
         } catch (_: InterruptedException) {
             Thread.currentThread().interrupt()
             emptyList()
@@ -618,13 +660,13 @@ class MainActivity : Activity() {
                 if (::serverSummary.isInitialized) {
                     serverSummary.text = selected?.let {
                         "${it.name}\n${it.endpoint} · ${it.protocol.uppercase()}\nمنبع عمومی: ${it.sourceName}"
-                    } ?: "سروری انتخاب نشده\nبرای انتخاب از فهرست‌های عمومی لمس کنید"
+                    } ?: "هنوز سروری رتبه‌بندی نشده\nبرای مشاهدهٔ نتیجه، اتصال هوشمند را اجرا کنید"
                 }
                 if (::statusLabel.isInitialized && activeTab == TAB_HOME && vpnState == V2SpeedVpnService.STATE_DISCONNECTED) {
                     statusLabel.text = when {
                         loaded.isEmpty() -> "هیچ سروری بارگیری نشد"
                         failures.isNotEmpty() -> "${loaded.size} سرور بارگیری شد؛ بعضی منابع در دسترس نبودند"
-                        else -> "${loaded.size} سرور بارگیری شد؛ یکی را انتخاب کنید"
+                        else -> "${loaded.size} کانفیگ بارگیری شد؛ برای اتصال هوشمند لمس کنید"
                     }
                 }
             }
