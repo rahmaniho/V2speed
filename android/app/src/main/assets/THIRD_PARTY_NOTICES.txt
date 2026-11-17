@@ -1,0 +1,19 @@
+V2Speed Android preview — third-party component notices
+
+This debug prototype bundles the AndroidLibXrayLite / Xray-core Android AAR as a separate third-party component. The V2Speed Kotlin source is not copied from v2rayNG.
+
+1. AndroidLibXrayLite
+   Upstream: https://github.com/2dust/AndroidLibXrayLite
+   Pinned source tag: v26.11.9 (commit b5a377087e74eaa34e86718710b04c50f4b767f)
+   License: GNU Lesser General Public License v3.0 (LGPL-3.0)
+   AAR publisher-declared SHA-256: cdfef146218233a31a8b52c8b1016557730d3b63fc121d4c84cacea50e669155
+   The corresponding source and LGPL text must be made available with any distribution.
+
+2. Xray-core
+   Upstream: https://github.com/XTLS/Xray-core
+   Version declared by the pinned wrapper: v1.260327.1-0.20261109052709-676eaf66f8f0
+   Source commit: 676eaf66f8f05d4d558ee7a74b4736623d3feeb9
+   License: Mozilla Public License 2.0 (MPL-2.0)
+   The corresponding source and MPL text must be made available as required by that license.
+
+LGPL-3.0 requires accompanying copies of both the GNU GPL v3 and LGPL v3 license texts. The full texts are included in the licenses/ directory. These notices are a preliminary inventory, not legal advice or a complete SBOM; all transitive modules and native ABI contents remain to be audited before release.

@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 SERVER_PATH = Path(__file__).with_name("server.py")
 SPEC = importlib.util.spec_from_file_location("v2speed_web_demo_server", SERVER_PATH)
@@ -20,6 +21,33 @@ class SubscriptionParserTests(unittest.TestCase):
         plain = "ss://user@example.com:443#node-a\nss://user@example.net:8443#node-b"
         encoded = base64.b64encode(plain.encode()).decode()
         self.assertEqual(SERVER.decode_subscription_payload(encoded), plain)
+
+    def test_subscription_parser_reports_accepted_duplicate_and_skipped_rows(self):
+        good = "vless://id@example.com:443?security=tls#edge"
+        text = f"# feed comment\n{good}\n{good}\nnot-a-config\n"
+        items, stats = SERVER.parse_subscription_text(text)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(stats, {"rows": 3, "accepted": 1, "duplicates": 1, "skipped": 1})
+
+    def test_public_source_summary_never_includes_config_uri(self):
+        source = {
+            "source_id": "unit",
+            "name": "test source",
+            "url": "https://example.invalid/sub",
+            "items": [{"id": "0123456789abcdef", "name": "node",
+                       "endpoint": "example.invalid:443", "protocol": "vless",
+                       "uri": "vless://secret@example.invalid:443"}],
+            "protocols": {"vless": 1},
+            "parse_stats": {"rows": 1, "accepted": 1, "duplicates": 0, "skipped": 0},
+            "cached_at": 100.0,
+            "fetched_at_utc": "2026-11-15T12:00:00+00:00",
+        }
+        summary = SERVER.public_source_summary(source, stale=True, now=460.0)
+        self.assertNotIn("uri", summary["nodes"][0])
+        self.assertEqual(summary["accepted"], 1)
+        self.assertEqual(summary["count"], 1)
+        self.assertTrue(summary["stale"])
+        self.assertEqual(summary["cache_age_seconds"], 360)
 
     def test_vless_and_trojan_rows_expose_endpoint_without_reformatting_config(self):
         for scheme in ("vless", "trojan"):
@@ -70,6 +98,30 @@ class SubscriptionParserTests(unittest.TestCase):
         self.assertNotIn("/api/subscriptions", worker)
         self.assertNotIn("/api/config/", worker)
 
+    def test_fetch_uses_stale_cache_when_upstream_fails(self):
+        cached = {"source_id": "iboxz", "items": []}
+        with mock.patch.object(SERVER, "fetch_source", side_effect=OSError("offline")), \
+                mock.patch.object(SERVER, "get_cached_source", return_value=cached):
+            result, stale = SERVER.fetch_source_with_stale_fallback("iboxz")
+        self.assertIs(result, cached)
+        self.assertTrue(stale)
+        with mock.patch.object(SERVER, "fetch_source", side_effect=OSError("offline")), \
+                mock.patch.object(SERVER, "get_cached_source", return_value=None):
+            with self.assertRaises(OSError):
+                SERVER.fetch_source_with_stale_fallback("iboxz")
+
+    def test_native_android_mvp_requires_real_vpn_service_and_minimum_api(self):
+        app = SERVER.ROOT / "android" / "app"
+        build = (app / "build.gradle").read_text()
+        manifest = (app / "src" / "main" / "AndroidManifest.xml").read_text()
+        service = (app / "src" / "main" / "java" / "app" / "v2speed" / "android" / "vpn" / "V2SpeedVpnService.kt").read_text()
+        self.assertIn("minSdk 29", build)
+        self.assertIn("android.permission.BIND_VPN_SERVICE", manifest)
+        self.assertIn("android.net.VpnService", manifest)
+        self.assertIn(": VpnService()", service)
+        self.assertIn(".establish()", service)
+        self.assertIn("Android 10+", (SERVER.ROOT / "docs" / "ANDROID_NATIVE_MVP.md").read_text())
+
     def test_manual_refresh_has_a_cooldown(self):
         previous = SERVER.LAST_FORCED_REFRESH
         try:
@@ -80,7 +132,21 @@ class SubscriptionParserTests(unittest.TestCase):
         finally:
             SERVER.LAST_FORCED_REFRESH = previous
 
+    def test_ui_offers_copyable_source_subscription_links(self):
+        page = (SERVER.WEB_ROOT / "app.html").read_text()
+        self.assertIn("کپی لینک اشتراک", page)
+        self.assertIn("copyText(source.url)", page)
+        self.assertIn("function formatAge(seconds)", page)
+        self.assertIn("نسخهٔ ذخیره‌شده · ${age}", page)
+        self.assertIn("منبع از نسخهٔ ذخیره‌شده است.", page)
+        self.assertIn('id="installApp"', page)
+        self.assertIn("beforeinstallprompt", page)
+        self.assertIn("«نصب برنامه»", page)
+        worker = (SERVER.WEB_ROOT / "sw.js").read_text()
+        self.assertIn("v2speed-app-shell-v8", worker)
+
 
 if __name__ == "__main__":
+
 
     unittest.main()

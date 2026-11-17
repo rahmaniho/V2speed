@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import concurrent.futures
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -141,6 +142,34 @@ def parse_subscription_row(uri: str) -> dict | None:
             "protocol": protocol, "uri": stripped}
 
 
+def parse_subscription_text(text: str) -> tuple[list[dict], dict[str, int]]:
+    items = []
+    seen = set()
+    row_count = 0
+    duplicate_count = 0
+    skipped_count = 0
+    for line in text.splitlines():
+        row = line.strip()
+        if not row or row.startswith("#"):
+            continue
+        row_count += 1
+        parsed = parse_subscription_row(row)
+        if parsed is None:
+            skipped_count += 1
+            continue
+        if parsed["id"] in seen:
+            duplicate_count += 1
+            continue
+        seen.add(parsed["id"])
+        items.append(parsed)
+    return items, {
+        "rows": row_count,
+        "accepted": len(items),
+        "duplicates": duplicate_count,
+        "skipped": skipped_count,
+    }
+
+
 def fetch_source(source_id: str, force: bool = False) -> dict:
     now = time.monotonic()
     with SUBSCRIPTION_CACHE_LOCK:
@@ -161,17 +190,7 @@ def fetch_source(source_id: str, force: bool = False) -> dict:
     if len(raw) > MAX_SUBSCRIPTION_BYTES:
         raise ValueError("subscription file exceeds size limit")
     text = decode_subscription_payload(raw.decode("utf-8-sig", errors="replace"))
-    items = []
-    seen = set()
-    for line in text.splitlines():
-        row = line.strip()
-        if not row or row.startswith("#"):
-            continue
-        parsed = parse_subscription_row(row)
-        if parsed is None or parsed["id"] in seen:
-            continue
-        seen.add(parsed["id"])
-        items.append(parsed)
+    items, parse_stats = parse_subscription_text(text)
     protocols: dict[str, int] = {}
     for item in items:
         protocols[item["protocol"]] = protocols.get(item["protocol"], 0) + 1
@@ -181,11 +200,47 @@ def fetch_source(source_id: str, force: bool = False) -> dict:
         "url": source["url"],
         "items": items,
         "protocols": protocols,
+        "parse_stats": parse_stats,
         "cached_at": now,
+        "fetched_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     with SUBSCRIPTION_CACHE_LOCK:
         SUBSCRIPTION_CACHE[source_id] = result
     return result
+
+
+def get_cached_source(source_id: str) -> dict | None:
+    with SUBSCRIPTION_CACHE_LOCK:
+        return SUBSCRIPTION_CACHE.get(source_id)
+
+
+def public_source_summary(source: dict, stale: bool = False,
+                          now: float | None = None) -> dict:
+    current = time.monotonic() if now is None else now
+    return {
+        "source_id": source["source_id"],
+        "name": source["name"],
+        "url": source["url"],
+        "count": len(source["items"]),
+        **source["parse_stats"],
+        "protocols": source["protocols"],
+        "fetched_at_utc": source["fetched_at_utc"],
+        "cache_age_seconds": max(0, int(current - source["cached_at"])),
+        "stale": stale,
+        "nodes": [{key: node[key] for key in ("id", "name", "endpoint", "protocol")}
+                  for node in source["items"]],
+    }
+
+
+def fetch_source_with_stale_fallback(source_id: str) -> tuple[dict, bool]:
+    try:
+        return fetch_source(source_id), False
+    except (OSError, ValueError, urllib.error.URLError,
+            urllib.error.HTTPError, json.JSONDecodeError):
+        cached = get_cached_source(source_id)
+        if cached is None:
+            raise
+        return cached, True
 
 
 def claim_forced_refresh(now: float | None = None) -> bool:
@@ -255,20 +310,18 @@ class Handler(BaseHTTPRequestHandler):
                     source_id = futures[future]
                     try:
                         source = future.result()
-                        results.append({
-                            "source_id": source["source_id"],
-                            "name": source["name"],
-                            "url": source["url"],
-                            "count": len(source["items"]),
-                            "protocols": source["protocols"],
-                            "nodes": [{key: node[key] for key in ("id", "name", "endpoint", "protocol")}
-                                      for node in source["items"]],
-                        })
+                        results.append(public_source_summary(source))
                     except (OSError, ValueError, urllib.error.URLError,
                             urllib.error.HTTPError, json.JSONDecodeError):
+                        cached = get_cached_source(source_id)
+                        if cached is not None:
+                            results.append(public_source_summary(cached, stale=True))
+                            message = "به‌روزرسانی انجام نشد؛ نسخهٔ قبلی به‌صورت موقت نمایش داده می‌شود."
+                        else:
+                            message = "منبع فعلاً در دسترس نیست؛ بعداً دوباره تلاش کنید."
                         errors.append({"source_id": source_id,
                                        "name": SUBSCRIPTION_SOURCES[source_id]["name"],
-                                       "message": "منبع فعلاً در دسترس نیست؛ بعداً دوباره تلاش کنید."})
+                                       "message": message})
             results.sort(key=lambda item: item["source_id"])
             json_response(self, 200, {
                 "sources": results,
@@ -282,13 +335,13 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, 404, {"error": "پیکربندی پیدا نشد."})
                 return
             try:
-                source = fetch_source(match.group(1))
+                source, stale = fetch_source_with_stale_fallback(match.group(1))
                 node = next(item for item in source["items"] if item["id"] == match.group(2))
             except (OSError, ValueError, StopIteration, urllib.error.URLError,
                     urllib.error.HTTPError, json.JSONDecodeError):
                 json_response(self, 404, {"error": "پیکربندی در دسترس نیست؛ فهرست را تازه‌سازی کنید."})
                 return
-            json_response(self, 200, {"uri": node["uri"]})
+            json_response(self, 200, {"uri": node["uri"], "stale": stale})
             return
         elif path == "/healthz":
             content = b"ok\n"
