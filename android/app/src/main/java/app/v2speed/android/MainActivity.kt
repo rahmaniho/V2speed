@@ -55,11 +55,15 @@ class MainActivity : Activity() {
     private val serviceLatencies = mutableMapOf<String, Triple<Long, Long, Long>>()
     private var visibleNodeCount = INITIAL_VISIBLE_NODES
     private var receiverRegistered = false
+    private var lastStateEventId = 0L
     private var activeTab = TAB_HOME
 
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            vpnState = intent?.getStringExtra(V2SpeedVpnService.EXTRA_STATE) ?: return
+            val eventId = intent?.getLongExtra(V2SpeedVpnService.EXTRA_EVENT_ID, 0L) ?: return
+            if (eventId <= lastStateEventId) return
+            lastStateEventId = eventId
+            vpnState = intent.getStringExtra(V2SpeedVpnService.EXTRA_STATE) ?: return
             val message = intent.getStringExtra(V2SpeedVpnService.EXTRA_MESSAGE).orEmpty()
             statusMessage = message
             if (intent.getBooleanExtra(V2SpeedVpnService.EXTRA_PROBE_COMPLETE, false)) {
@@ -111,6 +115,28 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(stateReceiver, filter, RECEIVER_NOT_EXPORTED)
         else registerReceiver(stateReceiver, filter)
         receiverRegistered = true
+        restoreLatestVpnStatus()
+    }
+
+    private fun restoreLatestVpnStatus() {
+        val snapshot = SmartConnectSession.latestStatus() ?: return
+        if (snapshot.eventId <= lastStateEventId) return
+        val intent = Intent()
+            .putExtra(V2SpeedVpnService.EXTRA_EVENT_ID, snapshot.eventId)
+            .putExtra(V2SpeedVpnService.EXTRA_STATE, snapshot.state)
+            .putExtra(V2SpeedVpnService.EXTRA_MESSAGE, snapshot.message)
+            .putExtra(V2SpeedVpnService.EXTRA_NODE_ID, snapshot.nodeId)
+        snapshot.rankedResults?.let { ranked ->
+            intent.putExtra(V2SpeedVpnService.EXTRA_PROBE_COMPLETE, true)
+            intent.putStringArrayListExtra(
+                V2SpeedVpnService.EXTRA_RANKED_NODE_IDS,
+                ArrayList(ranked.map { it.nodeId })
+            )
+            intent.putExtra(V2SpeedVpnService.EXTRA_INSTAGRAM_RTT, ranked.map { it.instagramMs }.toLongArray())
+            intent.putExtra(V2SpeedVpnService.EXTRA_YOUTUBE_RTT, ranked.map { it.youtubeMs }.toLongArray())
+            intent.putExtra(V2SpeedVpnService.EXTRA_ENDPOINT_RTT, ranked.map { it.endpointMs }.toLongArray())
+        }
+        stateReceiver.onReceive(this, intent)
     }
 
     override fun onStop() {

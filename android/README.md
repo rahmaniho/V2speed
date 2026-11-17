@@ -12,7 +12,7 @@ cd android
 gradle --no-daemon :app:assembleDebug
 ```
 
-The verified AAR is a third-party release from AndroidLibXrayLite; the script checks its SHA-256 before use. The local AAR is ignored by Git. CI runs the same fetch/check and publishes a temporary debug APK artifact. Debug signing is for personal testing only, not a production release.
+The verified AAR is a third-party release from AndroidLibXrayLite; the script checks its SHA-256 before use. The local AAR is ignored by Git. CI runs the same fetch/check and publishes a temporary debug APK artifact. Debug signing is for personal testing only, not a production release. Follow [`DEVICE_QA.md`](DEVICE_QA.md) for the physical-device acceptance checklist; CI cannot complete those checks.
 
 ## Current implementation and limitations
 

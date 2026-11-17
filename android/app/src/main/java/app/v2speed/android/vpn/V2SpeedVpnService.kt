@@ -340,23 +340,22 @@ class V2SpeedVpnService : VpnService() {
         rankedCandidates: List<SmartProbeCandidate>? = null,
         probeComplete: Boolean = false
     ) {
+        val rankedResults = rankedCandidates?.map {
+            SmartConnectSession.RankedResult(it.nodeId, it.instagramLatencyMs, it.youtubeLatencyMs, it.endpointLatencyMs)
+        } ?: if (probeComplete) emptyList() else null
+        val snapshot = SmartConnectSession.recordStatus(state, message, nodeId, rankedResults)
         val broadcast = Intent(ACTION_STATE)
             .setPackage(packageName)
+            .putExtra(EXTRA_EVENT_ID, snapshot.eventId)
             .putExtra(EXTRA_STATE, state)
             .putExtra(EXTRA_MESSAGE, message)
         nodeId?.let { broadcast.putExtra(EXTRA_NODE_ID, it) }
-        if (rankedCandidates != null) {
+        if (rankedResults != null) {
             broadcast.putExtra(EXTRA_PROBE_COMPLETE, true)
-            broadcast.putStringArrayListExtra(EXTRA_RANKED_NODE_IDS, ArrayList(rankedCandidates.map { it.nodeId }))
-            broadcast.putExtra(EXTRA_INSTAGRAM_RTT, rankedCandidates.map { it.instagramLatencyMs }.toLongArray())
-            broadcast.putExtra(EXTRA_YOUTUBE_RTT, rankedCandidates.map { it.youtubeLatencyMs }.toLongArray())
-            broadcast.putExtra(EXTRA_ENDPOINT_RTT, rankedCandidates.map { it.endpointLatencyMs }.toLongArray())
-        } else if (probeComplete) {
-            broadcast.putExtra(EXTRA_PROBE_COMPLETE, true)
-            broadcast.putStringArrayListExtra(EXTRA_RANKED_NODE_IDS, arrayListOf())
-            broadcast.putExtra(EXTRA_INSTAGRAM_RTT, longArrayOf())
-            broadcast.putExtra(EXTRA_YOUTUBE_RTT, longArrayOf())
-            broadcast.putExtra(EXTRA_ENDPOINT_RTT, longArrayOf())
+            broadcast.putStringArrayListExtra(EXTRA_RANKED_NODE_IDS, ArrayList(rankedResults.map { it.nodeId }))
+            broadcast.putExtra(EXTRA_INSTAGRAM_RTT, rankedResults.map { it.instagramMs }.toLongArray())
+            broadcast.putExtra(EXTRA_YOUTUBE_RTT, rankedResults.map { it.youtubeMs }.toLongArray())
+            broadcast.putExtra(EXTRA_ENDPOINT_RTT, rankedResults.map { it.endpointMs }.toLongArray())
         }
         sendBroadcast(broadcast)
     }
@@ -376,6 +375,7 @@ class V2SpeedVpnService : VpnService() {
         const val EXTRA_ENDPOINT_RTT = "endpoint_rtt_ms"
         const val EXTRA_NODE_ID = "selected_node_id"
         const val EXTRA_PROBE_COMPLETE = "probe_complete"
+        const val EXTRA_EVENT_ID = "state_event_id"
         const val EXTRA_STATE = "vpn_state"
         const val EXTRA_MESSAGE = "vpn_message"
         const val STATE_TESTING = "testing"
